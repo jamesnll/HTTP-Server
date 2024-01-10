@@ -1,0 +1,5 @@
+/home/jamesnl/CLionProjects/HTTP-Server/build/CMakeFiles/client.dir
+/home/jamesnl/CLionProjects/HTTP-Server/build/CMakeFiles/server.dir
+/home/jamesnl/CLionProjects/HTTP-Server/build/CMakeFiles/format.dir
+/home/jamesnl/CLionProjects/HTTP-Server/build/CMakeFiles/edit_cache.dir
+/home/jamesnl/CLionProjects/HTTP-Server/build/CMakeFiles/rebuild_cache.dir

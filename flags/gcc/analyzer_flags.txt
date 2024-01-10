@@ -1,0 +1,1 @@
+--analyzer -fanalyzer -fanalyzer-transitivity -fanalyzer-verbosity=3 -Wno-analyzer-too-complex -Wno-analyzer-fd-leak

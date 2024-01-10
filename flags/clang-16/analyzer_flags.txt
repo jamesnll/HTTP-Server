@@ -1,0 +1,1 @@
+-Wno-analyzer-too-complex -Wno-analyzer-fd-leak
