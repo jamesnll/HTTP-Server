@@ -1,0 +1,8 @@
+.clang-format
+build.sh
+change-compiler.sh
+generate-cmakelists.sh
+generate-flags.sh
+files.txt
+/build
+/flags
