@@ -1,7 +1,3 @@
-// Name: Wallace Trinh
-// Student #:A01289206
-// Date: Oct 2023
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -21,13 +17,16 @@
 #endif
 
 // Function declarations
-void             read_server_response(int sock);
-static void      parse_arguments(int argc, char *argv[], char **ip_address, char **port, char **command);
+void read_server_response(int sock);
+static void parse_arguments(int argc, char *argv[], char **ip_address, char **port, char **http_method, char **url_path, char **data);
 static in_port_t parse_in_port_t(const char *port_str);
-static void      convert_address(const char *address, struct sockaddr_storage *addr);
-static int       socket_create(int domain);
-static void      socket_connect(int sockfd, struct sockaddr_storage *addr, in_port_t port);
-static void      socket_close(int sockfd);
+static void convert_address(const char *address, struct sockaddr_storage *addr);
+static int socket_create(int domain);
+static void socket_connect(int sockfd, struct sockaddr_storage *addr, in_port_t port);
+static void socket_close(int sockfd);
+void create_get_head_request(char *request, const char *method, const char *url);
+void create_post_request(char *request, const char *url, const char *data);
+
 
 // Main function
 int main(int argc, char *argv[])
@@ -38,16 +37,27 @@ int main(int argc, char *argv[])
     in_port_t               port;
     int                     sockfd;
     struct sockaddr_storage addr;
+    char *http_method;
+    char *request_data;
+    char request[BUFFER_SIZE]; // To hold the constructed HTTP request
 
-    parse_arguments(argc, argv, &ip, &port_str, &command);
+    parse_arguments(argc, argv, &ip, &port_str, &http_method, &request_data);
     port = parse_in_port_t(port_str);
     convert_address(ip, &addr);
     sockfd = socket_create(addr.ss_family);
     socket_connect(sockfd, &addr, port);
 
-    write(sockfd, command, strlen(command));
-    read_server_response(sockfd);
+    if(strcmp(http_method, "GET") == 0 || strcmp(http_method, "HEAD") == 0) {
+        create_get_head_request(request, http_method, request_data);
+    } else if(strcmp(http_method, "POST") == 0) {
+        create_post_request(request, request_data, argv[5]); // argv[5] for POST data
+    } else {
+        fprintf(stderr, "Invalid HTTP method.\n");
+        exit(EXIT_FAILURE);
+    }
 
+    write(sockfd, request, strlen(request));
+    read_server_response(sockfd);
     socket_close(sockfd);
     return 0;
 }
@@ -70,18 +80,42 @@ void read_server_response(int sock)
     }
 }
 
-// Parses command-line argument for the IP, port and command
-static void parse_arguments(int argc, char *argv[], char **ip_address, char **port, char **command)
-{
-    if(argc != 4)
-    {
-        fprintf(stderr, "Usage: %s <ip address> <port> <command>\n", argv[0]);
+// Parses/handle HTTP method and request data
+static void parse_arguments(int argc, char *argv[], char **ip_address, char **port, char **http_method, char **url_path, char **data) {
+    // Check if the number of args is not within the expected range (5 or 6)
+    if (argc < 5 || argc > 6) {
+        // Prints usage info and exit if the arg count is incorrect
+        fprintf(stderr, "Usage: %s <ip address> <port> <http method> <url path> [data]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    *ip_address = argv[1];
-    *port       = argv[2];
-    *command    = argv[3];
+    *ip_address  = argv[1]; // IP address
+    *port        = argv[2]; // Port number
+    *http_method = argv[3]; // HTTP method (GET, POST, HEAD)
+    *url_path    = argv[4]; // URL path for HTTP request
+    *data        = argc == 6 ? argv[5] : NULL; // Optional data for POST request; NULL if not provided
+}
+
+// HTTP Request Functions
+// Function to create a GET or HEAD request
+void create_get_head_request(char *request, const char *method, const char *url) {
+    // Format the request string into the "request" buffer
+    snprintf(request, BUFFER_SIZE, "%s %s HTTP/1.0\r\n\r\n", method, url);
+    // %s for method (GET/HEAD), %s for URL, followed by HTTP/1.0 standard and \r\n\r\n
+}
+
+// Function to construct a POST request
+void create_post_request(char *request, const char *url, const char *data) {
+    // Check if data is provided for the POST request
+    if (data != NULL) {
+        // If data is provided, format the POST request with content length header and the data
+        snprintf(request, BUFFER_SIZE, "POST %s HTTP/1.0\r\nContent-Length: %ld\r\n\r\n%s", url, strlen(data), data);
+        // %s for URL, %ld for the length of the data, %s for the actual data
+    } else {
+        // If no data is provided, set content length to 0
+        snprintf(request, BUFFER_SIZE, "POST %s HTTP/1.0\r\nContent-Length: 0\r\n\r\n", url);
+        // POST request with content length header set to 0 (basically no data)
+    }
 }
 
 // Parses string to get the port number, checking for errors and range
@@ -193,3 +227,5 @@ static void socket_close(int sockfd)
         exit(EXIT_FAILURE);
     }
 }
+
+
