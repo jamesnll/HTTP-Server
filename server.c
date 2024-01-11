@@ -17,6 +17,7 @@
 
 // Standard Library
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -407,6 +408,8 @@ static int socket_accept_connection(int server_fd, struct sockaddr_storage *clie
 static void read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer)
 {
     char word[UINT8_MAX + 1];
+    //    const char *key       = "\r\n\r\n";
+        bool        key_found = false;
 
     // Reset buffer
     for(int i = 0; i < LINE_LENGTH; i++)
@@ -414,11 +417,27 @@ static void read_from_socket(int client_sockfd, struct sockaddr_storage *client_
         buffer[i] = '\0';
     }
 
-    // Reads only 4 bytes
+    while(!key_found)
+    {
+        read(client_sockfd, word, sizeof(uint8_t));
+        printf("Word: %s\n", word);
+        strncpy(buffer, word, strlen(word));
+
+        // Once the buffer has 16 characters, then start checking for \r\n\r\n
+        if (strlen(buffer) >= 16)
+        {
+            // Have four strcmp's to check for the four last characters being \r\n\r\n
+        }
+
+
+
+    }
+
     // TODO: read until \r\n\r\n
-    read(client_sockfd, word, sizeof(uint64_t));
-    printf("Word: %s\n", word);
-    strncpy(buffer, word, strlen(word));
+    // Funny solution sizeof(uint64_t) * 8
+    //    read(client_sockfd, word, sizeof(uint8_t));
+    //    printf("Word: %s\n", word);
+    //    strncpy(buffer, word, strlen(word));
 }
 
 #pragma GCC diagnostic pop
