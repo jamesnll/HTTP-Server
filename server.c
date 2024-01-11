@@ -406,8 +406,7 @@ static int socket_accept_connection(int server_fd, struct sockaddr_storage *clie
  */
 static void read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer)
 {
-    uint8_t size;
-    char    word[UINT8_MAX + 1];
+    char word[UINT8_MAX + 1];
 
     // Reset buffer
     for(int i = 0; i < LINE_LENGTH; i++)
@@ -415,10 +414,9 @@ static void read_from_socket(int client_sockfd, struct sockaddr_storage *client_
         buffer[i] = '\0';
     }
 
-    read(client_sockfd, &size, sizeof(uint8_t));
-    read(client_sockfd, word, size);
-    word[size] = '\0';
-    printf("Size: %d\n", size);
+    // Reads only 4 bytes
+    // TODO: read until \r\n\r\n
+    read(client_sockfd, word, sizeof(uint64_t));
     printf("Word: %s\n", word);
     strncpy(buffer, word, strlen(word));
 }
