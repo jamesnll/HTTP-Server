@@ -1,8 +1,3 @@
-/*
- *  James Langille
- *  A01251664
- */
-
 // Data Types and Limits
 #include <inttypes.h>
 #include <stdint.h>
@@ -48,16 +43,8 @@ static int  socket_create(int domain, int type, int protocol);
 static void socket_bind(int sockfd, struct sockaddr_storage *addr, in_port_t port);
 static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
-static void read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
 static void socket_close(int sockfd);
-static void redirect_stdout(int fd);
-static void reset_stdout(int stdout_copy);
-
-// Command Runner
-static void split_input(char *input, char **command, char **args);
-int         find_binary_executable(const char *command, char *full_path, int stdout_copy);
-static void execute_process(const char *full_path, char **args);
-// static void free_memory(char *command, char **args, int args_used);
+static void read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -99,20 +86,12 @@ int main(int argc, char *argv[])
     {
         // Client socket variables
         int                     client_sockfd;
-        int                     stdout_copy;
         struct sockaddr_storage client_addr;
         socklen_t               client_addr_len;
-
-        // Command runner variables
-        char *args[LINE_LENGTH];
-        char  buffer[LINE_LENGTH];
-        char *command;
-        char  full_path[LINE_LENGTH];
-        int   find_executable_result;
+        char                    buffer[LINE_LENGTH];
 
         client_addr_len = sizeof(client_addr);
         client_sockfd   = socket_accept_connection(sockfd, &client_addr, &client_addr_len);
-        command         = NULL;
 
         if(client_sockfd == -1)
         {
@@ -124,24 +103,8 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        stdout_copy = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, 0);    // Duplicate stdout fd
-
         // Command Runner
         read_from_socket(client_sockfd, &client_addr, buffer);
-        redirect_stdout(client_sockfd);
-        split_input(buffer, &command, args);
-
-        find_executable_result = find_binary_executable(command, full_path, stdout_copy);
-
-        if(find_executable_result != 0)
-        {
-            reset_stdout(stdout_copy);
-            socket_close(client_sockfd);
-            continue;
-        }
-
-        execute_process(full_path, args);
-        reset_stdout(stdout_copy);
 
         socket_close(client_sockfd);
     }
@@ -474,160 +437,6 @@ static void socket_close(int sockfd)
         exit(EXIT_FAILURE);
     }
 }
-
-/**
- * Redirect the standard output (stdout) to the specified file descriptor.
- * @param fd The file descriptor to which stdout should be redirected.
- */
-static void redirect_stdout(int fd)
-{
-    if(dup2(fd, STDOUT_FILENO) == -1)
-    {
-        perror("dup2");
-        close(fd);
-        exit(EXIT_FAILURE);
-    }
-}
-
-/**
- * Redirects the standard output copy to the original standard output file descriptor.
- * @param stdout_copy A copy file descriptor of standard output
- */
-static void reset_stdout(int stdout_copy)
-{
-    if(dup2(stdout_copy, STDOUT_FILENO) == -1)
-    {
-        perror("dup2 after execv");
-        close(STDOUT_FILENO);
-        exit(EXIT_FAILURE);
-    }
-}
-
-// Command Runner Functions
-
-/**
- * Split an input string into a command and its arguments.
- * @param input The input string to be split.
- * @param command A pointer to store the command extracted from the input.
- * @param args An array of pointers to store the arguments extracted from the input.
- * @param args_used A pointer to an integer that keeps track of the number of arguments extracted.
- * @param stdout_copy A copy of the original stdout file descriptor
- */
-static void split_input(char *input, char **command, char **args)
-{
-    int        args_count = 0;
-    char      *savePtr;
-    const char delimiter[] = " ";
-    char      *token;
-
-    token = strtok_r(input, delimiter, &savePtr);
-
-    while(token != NULL)
-    {
-        if(args_count == 0)
-        {
-            // Set command
-            *command = token;
-        }
-        // Set args
-        args[args_count] = token;
-
-        token = strtok_r(NULL, delimiter, &savePtr);
-        args_count++;
-    }
-    // execv requires for a null terminated list of args
-    args[args_count] = NULL;
-}
-
-/**
- * Find the full path of a binary executable given its command name.
- * @param command The command name to search for, e.g., "ls" or "gcc".
- * @param full_path A buffer to store the full path of the executable if found.
- * @return 0 if the executable is found, -1 if not found or an error occurs.
- */
-int find_binary_executable(const char *command, char *full_path, int stdout_copy)
-{
-    const char delimiter[] = ":";
-    char      *path;
-    char       path_copy[LINE_LENGTH];    // Create a copy to not alter the original
-    char      *path_token;
-    char      *savePtr;
-
-    path = getenv("PATH");
-
-    if(path == NULL)
-    {
-        fprintf(stdout, "PATH environment variable not found.\n");
-        reset_stdout(stdout_copy);
-        return EXIT_FAILURE;
-    }
-
-    strncpy(path_copy, path, strlen(path));
-
-    path_token = strtok_r(path_copy, delimiter, &savePtr);
-
-    while(path_token != NULL)
-    {
-        snprintf(full_path, LINE_LENGTH, "%s/%s", path_token, command);
-        if(access(full_path, X_OK) == 0)    // Checks if the path is an executable file
-        {
-            return EXIT_SUCCESS;    // Binary executable found
-        }
-        path_token = strtok_r(NULL, delimiter, &savePtr);
-    }
-    fprintf(stdout, "Command %s was not found.\n", command);
-    reset_stdout(stdout_copy);
-    return EXIT_FAILURE;
-}
-
-/**
- * Execute a new process with the specified binary and arguments.
- * @param full_path The full path to the binary executable to be executed.
- * @param args An array of pointers to the arguments for the new process.
- */
-void execute_process(const char *full_path, char **args)
-{
-    pid_t pid = fork();
-    if(pid == -1)
-    {
-        perror("Error creating child process");
-        exit(EXIT_FAILURE);
-    }
-    else if(pid == 0)
-    {
-        // Child process
-        execv(full_path, args);
-    }
-    else
-    {
-        // Parent process
-        int status;
-        waitpid(pid, &status, 0);
-        if(WIFEXITED(status))
-        {
-            printf("Child process exited with status: %d\n", WEXITSTATUS(status));
-        }
-    }
-}
-
-/**
- * Free the memory allocated for the command and its arguments.
- * @param command The pointer to the command string that needs to be freed.
- * @param args An array of pointers to the arguments that need to be freed.
- * @param args_used The number of arguments stored in the 'args' array.
- */
-// static void free_memory(char *command, char **args, int args_used)
-//{
-//     free(command);
-//     for(int i = 0; i < args_used; i++)
-//     {
-//         if(args[i] != NULL)
-//         {
-//             //            free(args[i]);
-//         }
-//     }
-//     printf("Memory deallocated\n");
-// }
 
 // Signal Handling Functions
 
