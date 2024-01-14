@@ -46,7 +46,7 @@ static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
 static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
-static int  parse_request(char *buffer);
+static int  parse_request(char *request, char **request_type, char **request_endpoint, char **http_version);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -91,7 +91,11 @@ int main(int argc, char *argv[])
         int                     client_sockfd;
         struct sockaddr_storage client_addr;
         socklen_t               client_addr_len;
-        char                    buffer[LINE_LENGTH] = "";
+        char                    request_buffer[LINE_LENGTH] = "";
+        // These three variables below declared with read only memory, might have to change in the future
+        char *request_type;
+        char *request_endpoint;
+        char *request_http_version;
 
         // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
@@ -110,14 +114,14 @@ int main(int argc, char *argv[])
 
         // TODO: 3. once a client is accepted, use fork() to create a child process to handle the connection
 
-        if(read_from_socket(client_sockfd, &client_addr, buffer) == -1)
+        if(read_from_socket(client_sockfd, &client_addr, request_buffer) == -1)
         {
             socket_close(client_sockfd);
             socket_close(sockfd);
             exit(EXIT_FAILURE);
         }
 
-        parse_request(buffer);
+        parse_request(request_buffer, &request_type, &request_endpoint, &request_http_version);
 
         // TODO: 1. parse, create response, and send response to client
 
@@ -476,12 +480,21 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
 
 /**
  * Parses the buffer to get request information.
- * @param buffer
+ * @param buffer request to be parsed
  * @return
  */
-static int parse_request(char *buffer)
+static int parse_request(char *request, char **request_type, char **request_endpoint, char **http_version)
 {
-    printf("Parse request called\n");
+    const char *delimiter = " ";
+    char       *savePtr;
+
+    // Lines below parses the first line of the request
+    *request_type     = strtok_r(request, delimiter, &savePtr);
+    *request_endpoint = strtok_r(NULL, delimiter, &savePtr);
+    *http_version     = strtok_r(NULL, "\r\n", &savePtr);
+
+    // Test print
+    printf("Request type: %s\nRequest endpoint: %s\nHTTP Version: %s\n", *request_type, *request_endpoint, *http_version);
     return 0;
 }
 
