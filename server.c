@@ -45,7 +45,8 @@ static void socket_bind(int sockfd, struct sockaddr_storage *addr, in_port_t por
 static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
-static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr);
+static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
+// static int  parse_request();
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -90,6 +91,7 @@ int main(int argc, char *argv[])
         int                     client_sockfd;
         struct sockaddr_storage client_addr;
         socklen_t               client_addr_len;
+        char                    buffer[LINE_LENGTH] = "";
 
         // TODO: modify the code below so that multiplexing accepts clients
 
@@ -108,7 +110,7 @@ int main(int argc, char *argv[])
 
         // TODO: once a client is accepted, use fork() to create a child process to handle the connection
 
-        if(read_from_socket(client_sockfd, &client_addr) == -1)
+        if(read_from_socket(client_sockfd, &client_addr, buffer) == -1)
         {
             socket_close(client_sockfd);
             socket_close(sockfd);
@@ -433,14 +435,13 @@ static int socket_accept_connection(int server_fd, struct sockaddr_storage *clie
  * @param client_addr     a pointer to a struct sockaddr_storage containing
  * client address information
  */
-static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr)
+static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer)
 {
     char        word[UINT8_MAX + 1];
-    const char *key                 = "\r\n\r\n";
-    char        buffer[LINE_LENGTH] = "";
-    bool        key_found           = false;
-    const int   min_header_length   = 16;
-    int         iteration           = 0;
+    const char *key               = "\r\n\r\n";
+    bool        key_found         = false;
+    const int   min_header_length = 16;
+    int         iteration         = 0;
 
     while(!key_found)
     {
