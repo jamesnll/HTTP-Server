@@ -46,7 +46,7 @@ static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
 static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
-// static int  parse_request();
+static int  parse_request(char *buffer);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
         socklen_t               client_addr_len;
         char                    buffer[LINE_LENGTH] = "";
 
-        // TODO: modify the code below so that multiplexing accepts clients
+        // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
         client_addr_len = sizeof(client_addr);
         client_sockfd   = socket_accept_connection(sockfd, &client_addr, &client_addr_len);
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        // TODO: once a client is accepted, use fork() to create a child process to handle the connection
+        // TODO: 3. once a client is accepted, use fork() to create a child process to handle the connection
 
         if(read_from_socket(client_sockfd, &client_addr, buffer) == -1)
         {
@@ -116,7 +116,10 @@ int main(int argc, char *argv[])
             socket_close(sockfd);
             exit(EXIT_FAILURE);
         }
-        // TODO: parse, create response, and send response to client
+
+        parse_request(buffer);
+
+        // TODO: 1. parse, create response, and send response to client
 
         // Before closing client socket, cleanup child process resources
         socket_close(client_sockfd);
@@ -468,6 +471,17 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
         iteration++;
     }
     printf("%s", buffer);    // Test print
+    return 0;
+}
+
+/**
+ * Parses the buffer to get request information.
+ * @param buffer
+ * @return
+ */
+static int parse_request(char *buffer)
+{
+    printf("Parse request called\n");
     return 0;
 }
 
