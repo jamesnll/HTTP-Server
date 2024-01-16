@@ -1,1 +1,1 @@
-server server.c
+server src/server.c

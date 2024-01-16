@@ -27,6 +27,7 @@
 #define UNKNOWN_OPTION_MESSAGE_LEN 24
 #define BASE_TEN 10
 #define LINE_LENGTH 1024
+// #define HTTP_SERVER_VERSION "HTTP/1.0"
 
 // ----- Function Headers -----
 
