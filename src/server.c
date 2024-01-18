@@ -16,6 +16,7 @@
 #include <signal.h>
 
 // Standard Library
+#include "../include/server.h"
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -24,7 +25,6 @@
 #include <unistd.h>
 
 // Macros
-#define UNKNOWN_OPTION_MESSAGE_LEN 24
 #define BASE_TEN 10
 #define LINE_LENGTH 1024
 // #define HTTP_SERVER_VERSION "HTTP/1.0"
@@ -32,8 +32,6 @@
 // ----- Function Headers -----
 
 // Argument Parsing
-static void      parse_arguments(int argc, char *argv[], char **ip_address, char **port);
-static void      handle_arguments(const char *binary_name, const char *ip_address, const char *port_str, in_port_t *port);
 static in_port_t parse_in_port_t(const char *binary_name, const char *port_str);
 
 // Error Handling
@@ -59,22 +57,16 @@ static void sigint_handler(int signum);
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_flag = 0;
 
-int main(int argc, char *argv[])
+void run_server(const struct arguments *args)
 {
-    char                   *ip_address;
-    char                   *port_str;
     in_port_t               port;
     int                     enable;
     int                     sockfd;
     struct sockaddr_storage addr;
 
-    ip_address = NULL;
-    port_str   = NULL;
-
     // Set up server
-    parse_arguments(argc, argv, &ip_address, &port_str);
-    handle_arguments(argv[0], ip_address, port_str, &port);
-    convert_address(ip_address, &addr);
+    port = parse_in_port_t("binary_name", args->port_str);
+    convert_address(args->ip_address, &addr);
     sockfd = socket_create(addr.ss_family, SOCK_STREAM, 0);
 
     enable = 1;
@@ -167,77 +159,11 @@ int main(int argc, char *argv[])
     }
 
     socket_close(sockfd);    // Close server
-    return 0;
 }
 
 // ----- Function Definitions -----
 
 // Argument Parsing Functions
-static void parse_arguments(const int argc, char *argv[], char **ip_address, char **port)
-{
-    int opt;
-    opterr = 0;
-
-    // Option parsing
-    while((opt = getopt(argc, argv, "h:")) != -1)
-    {
-        switch(opt)
-        {
-            case 'h':
-            {
-                usage(argv[0], EXIT_SUCCESS, NULL);
-            }
-            case '?':
-            {
-                char message[UNKNOWN_OPTION_MESSAGE_LEN];
-
-                snprintf(message, sizeof(message), "Unknown option '-%c'.", optopt);
-                usage(argv[0], EXIT_FAILURE, message);
-            }
-            default:
-            {
-                usage(argv[0], EXIT_FAILURE, NULL);
-            }
-        }
-    }
-
-    // Check for sufficient args
-    if(optind >= argc)
-    {
-        usage(argv[0], EXIT_FAILURE, "The ip address and port are required.");
-    }
-
-    // Check for port arg
-    if(optind + 1 >= argc)
-    {
-        usage(argv[0], EXIT_FAILURE, "The port is required.");
-    }
-
-    // Check for extra args
-    if(optind < argc - 2)
-    {
-        usage(argv[0], EXIT_FAILURE, "Error: Too many arguments.");
-    }
-
-    *ip_address = argv[optind];
-    *port       = argv[optind + 1];
-}
-
-static void handle_arguments(const char *binary_name, const char *ip_address, const char *port_str, in_port_t *port)
-{
-    if(ip_address == NULL)
-    {
-        usage(binary_name, EXIT_FAILURE, "The ip address is required.");
-    }
-
-    if(port_str == NULL)
-    {
-        usage(binary_name, EXIT_FAILURE, "The port is required.");
-    }
-
-    *port = parse_in_port_t(binary_name, port_str);
-}
-
 static in_port_t parse_in_port_t(const char *binary_name, const char *port_str)
 {
     char     *endptr;

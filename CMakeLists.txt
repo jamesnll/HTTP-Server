@@ -11,13 +11,17 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/main.c)
 list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/server.c)
+list(APPEND HEADERS ${CMAKE_SOURCE_DIR}/include/server.h)
 
 set(server_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/main.c
     ${CMAKE_SOURCE_DIR}/src/server.c
 )
 
 set(server_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/server.h
 )
 
 add_executable(server ${server_SOURCES})
@@ -36,6 +40,11 @@ endif()
 
 target_link_directories(server PRIVATE /usr/local/lib${LIBSUFFIX})
 
+target_link_libraries(server PRIVATE p101_env)
+target_link_libraries(server PRIVATE p101_error)
+target_link_libraries(server PRIVATE p101_c)
+target_link_libraries(server PRIVATE p101_posix)
+target_link_libraries(server PRIVATE p101_fsm)
 
 message("C Compiler: ${CMAKE_C_COMPILER}")
 get_filename_component(COMPILER_NAME "${CMAKE_C_COMPILER}" NAME_WE)

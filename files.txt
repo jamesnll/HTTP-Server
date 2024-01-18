@@ -1,1 +1,1 @@
-server src/server.c
+server src/main.c src/server.c include/server.h p101_env p101_error p101_c p101_posix p101_fsm
