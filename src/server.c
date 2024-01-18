@@ -49,6 +49,9 @@ static void socket_close(int sockfd);
 static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
 static int  parse_request(char *request, char **request_type, char **request_endpoint, char **http_version);
 
+// Response Sending Function
+static void send_response(int client_sockfd, const char *header, const char *body);
+
 // Signal Handling Functions
 static void setup_signal_handler(void);
 static void sigint_handler(int signum);
@@ -113,7 +116,7 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        // TODO: 3. once a client is accepted, use fork() to create a child process to handle the connection
+        // TODO: 3. once a client is accepted, use fork() to create a child process to handle the connection WIP
 
         if(read_from_socket(client_sockfd, &client_addr, request_buffer) == -1)
         {
@@ -124,7 +127,40 @@ int main(int argc, char *argv[])
 
         parse_request(request_buffer, &request_type, &request_endpoint, &request_http_version);
 
-        // TODO: 1. parse, create response, and send response to client
+        // TODO: 1. parse, create response, and send response to client WIP
+
+        // Check request type and generate response
+        if(strcmp(request_type, "GET") == 0)
+        {
+            // Handle the GET request
+            // Just a simple static response for now, might need to adjust to retrieve and send the requested resource.
+            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html";         // Set the response header for a successful request
+            const char *body   = "<html><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
+            send_response(client_sockfd, header, body);                                // Send the response back to the client
+        }
+        else if(strcmp(request_type, "HEAD") == 0)
+        {
+            // Handle HEAD request
+            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html";    // Set the response header (HEAD requests do not have a body)
+            send_response(client_sockfd, header, "");                             // Send the response back to the client
+        }
+        else if(strcmp(request_type, "POST") == 0)
+        {
+            // Handle POST request
+            // Processing the data sent in the request and possibly store it using NDBM
+            const char *header = "HTTP/1.0 200 OK";                                     // Set the response header for a successful request
+            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
+            send_response(client_sockfd, header, body);                                 // Send the response back to the client
+        }
+        else
+        {
+            // Handle unknown request type
+            const char *header = "HTTP/1.0 400 Bad Request";                              // Set the response header for a bad request
+            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
+            send_response(client_sockfd, header, body);                                   // Send the response back to the client
+        }
+
+        // TODO1 Section^^^
 
         // Before closing client socket, cleanup child process resources
         socket_close(client_sockfd);
@@ -548,6 +584,14 @@ static void setup_signal_handler(void)
         perror("sigaction");
         exit(EXIT_FAILURE);
     }
+}
+
+// Response Sending Function
+static void send_response(int client_sockfd, const char *header, const char *body)
+{
+    char response[LINE_LENGTH * 2];                        // Allocate a buffer for the response
+    sprintf(response, "%s\r\n%s", header, body);           // Format the response by combining the header and body
+    send(client_sockfd, response, strlen(response), 0);    // Sends the response to the client
 }
 
 #pragma GCC diagnostic push
