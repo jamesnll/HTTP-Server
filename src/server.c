@@ -108,8 +108,6 @@ void run_server(const struct arguments *args)
             continue;
         }
 
-        // TODO: 3. once a client is accepted, use fork() to create a child process to handle the connection WIP
-
         if(read_from_socket(client_sockfd, &client_addr, request_buffer) == -1)
         {
             socket_close(client_sockfd);
@@ -119,16 +117,18 @@ void run_server(const struct arguments *args)
 
         parse_request(request_buffer, &request_type, &request_endpoint, &request_http_version);
 
-        // TODO: 1. parse, create response, and send response to client WIP
+        // TODO: 1. parse, search for request using file tree walking, create response, and send response to client WIP
+
+        // TODO: 3. set up NDBM for post requests
 
         // Check request type and generate response
         if(strcmp(request_type, "GET") == 0)
         {
             // Handle the GET request
             // Just a simple static response for now, might need to adjust to retrieve and send the requested resource.
-            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html";         // Set the response header for a successful request
-            const char *body   = "<html><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
-            send_response(client_sockfd, header, body);                                // Send the response back to the client
+            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html";                      // Set the response header for a successful request
+            const char *body   = "<html><head><head/><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
+            send_response(client_sockfd, header, body);                                             // Send the response back to the client
         }
         else if(strcmp(request_type, "HEAD") == 0)
         {
@@ -515,8 +515,9 @@ static void setup_signal_handler(void)
 // Response Sending Function
 static void send_response(int client_sockfd, const char *header, const char *body)
 {
-    char response[LINE_LENGTH * 2];                        // Allocate a buffer for the response
-    sprintf(response, "%s\r\n%s", header, body);           // Format the response by combining the header and body
+    char response[LINE_LENGTH * 2];                 // Allocate a buffer for the response
+    sprintf(response, "%s\r\n%s", header, body);    // Format the response by combining the header and body
+    printf("%s\n", response);
     send(client_sockfd, response, strlen(response), 0);    // Sends the response to the client
 }
 
