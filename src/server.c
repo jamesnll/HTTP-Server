@@ -126,21 +126,21 @@ void run_server(const struct arguments *args)
         {
             // Handle the GET request
             // Just a simple static response for now, might need to adjust to retrieve and send the requested resource.
-            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html";                      // Set the response header for a successful request
-            const char *body   = "<html><head><head/><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
-            send_response(client_sockfd, header, body);                                             // Send the response back to the client
+            const char  header[] = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";              // Set the response header for a successful request
+            const char *body     = "<html><head></head><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
+            send_response(client_sockfd, header, body);                                               // Send the response back to the client
         }
         else if(strcmp(request_type, "HEAD") == 0)
         {
             // Handle HEAD request
-            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html";    // Set the response header (HEAD requests do not have a body)
+            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
             send_response(client_sockfd, header, "");                             // Send the response back to the client
         }
         else if(strcmp(request_type, "POST") == 0)
         {
             // Handle POST request
             // Processing the data sent in the request and possibly store it using NDBM
-            const char *header = "HTTP/1.0 200 OK";                                     // Set the response header for a successful request
+            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                                     // Set the response header for a successful request
             const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
             send_response(client_sockfd, header, body);                                 // Send the response back to the client
         }
@@ -515,9 +515,9 @@ static void setup_signal_handler(void)
 // Response Sending Function
 static void send_response(int client_sockfd, const char *header, const char *body)
 {
-    char response[LINE_LENGTH * 2];                 // Allocate a buffer for the response
-    sprintf(response, "%s\r\n%s", header, body);    // Format the response by combining the header and body
-    printf("%s\n", response);
+    char response[LINE_LENGTH * 2];    // Allocate a buffer for the response
+
+    sprintf(response, "%s%s", header, body);               // Format the response by combining the header and body
     send(client_sockfd, response, strlen(response), 0);    // Sends the response to the client
 }
 
