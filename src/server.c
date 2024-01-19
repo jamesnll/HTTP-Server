@@ -1,14 +1,9 @@
-// Data Types and Limits
-#include <inttypes.h>
-#include <stdint.h>
-
 // Error Handling
 #include <errno.h>
 
 // Network Programming
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 
@@ -25,17 +20,10 @@
 #include <unistd.h>
 
 // Macros
-#define BASE_TEN 10
 #define LINE_LENGTH 1024
 // #define HTTP_SERVER_VERSION "HTTP/1.0"
 
 // ----- Function Headers -----
-
-// Argument Parsing
-static in_port_t parse_in_port_t(const char *binary_name, const char *port_str);
-
-// Error Handling
-_Noreturn static void usage(const char *program_name, int exit_code, const char *message);
 
 // Network Handling
 static void convert_address(const char *address, struct sockaddr_storage *addr);
@@ -59,13 +47,11 @@ static volatile sig_atomic_t exit_flag = 0;
 
 void run_server(const struct arguments *args)
 {
-    in_port_t               port;
     int                     enable;
     int                     sockfd;
     struct sockaddr_storage addr;
 
     // Set up server
-    port = parse_in_port_t("binary_name", args->port_str);
     convert_address(args->ip_address, &addr);
     sockfd = socket_create(addr.ss_family, SOCK_STREAM, 0);
 
@@ -76,7 +62,7 @@ void run_server(const struct arguments *args)
         exit(EXIT_FAILURE);
     }
 
-    socket_bind(sockfd, &addr, port);
+    socket_bind(sockfd, &addr, args->port);
     start_listening(sockfd, SOMAXCONN);
     setup_signal_handler();
 
@@ -159,52 +145,6 @@ void run_server(const struct arguments *args)
 }
 
 // ----- Function Definitions -----
-
-// Argument Parsing Functions
-static in_port_t parse_in_port_t(const char *binary_name, const char *port_str)
-{
-    char     *endptr;
-    uintmax_t parsed_value;
-
-    errno        = 0;
-    parsed_value = strtoumax(port_str, &endptr, BASE_TEN);
-
-    // Check for errno was signalled
-    if(errno != 0)
-    {
-        perror("Error parsing in_port_t.");
-        exit(EXIT_FAILURE);
-    }
-
-    // Check for any non-numeric characters in the input string
-    if(*endptr != '\0')
-    {
-        usage(binary_name, EXIT_FAILURE, "Invalid characters in input.");
-    }
-
-    // Check if the parsed value is within valid range of in_port_t
-    if(parsed_value > UINT16_MAX)
-    {
-        usage(binary_name, EXIT_FAILURE, "in_port_t value out of range.");
-    }
-
-    return (in_port_t)parsed_value;
-}
-
-// Error Handling Functions
-
-_Noreturn static void usage(const char *program_name, int exit_code, const char *message)
-{
-    if(message)
-    {
-        fprintf(stderr, "%s\n", message);
-    }
-
-    fprintf(stderr, "Usage: %s [-h] <ip address> <port>\n", program_name);
-    fputs("Options:\n", stderr);
-    fputs(" -h Display this help message\n", stderr);
-    exit(exit_code);
-}
 
 // Network Handling Functions
 

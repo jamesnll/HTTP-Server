@@ -8,9 +8,11 @@
 
 static void           parse_arguments(const struct p101_env *env, int argc, char *argv[], struct arguments *args);
 static void           check_arguments(const struct p101_env *env, const char *binary_name, const struct arguments *args);
+static in_port_t      parse_in_port_t(const struct p101_env *env, struct p101_error *error, const char *port_str);
 _Noreturn static void usage(const struct p101_env *env, const char *program_name, int exit_code, const char *message);
 
 #define UNKNOWN_OPTION_MESSAGE_LEN 24
+#define BASE_TEN 10
 
 int main(int argc, char *argv[])
 {
@@ -24,6 +26,7 @@ int main(int argc, char *argv[])
 
     parse_arguments(env, argc, argv, &args);
     check_arguments(env, argv[0], &args);
+    args.port = parse_in_port_t(env, err, args.port_str);
 
     if(p101_error_has_error(err))
     {
@@ -113,6 +116,43 @@ static void check_arguments(const struct p101_env *env, const char *binary_name,
     {
         usage(env, binary_name, EXIT_FAILURE, "The directory is required.");
     }
+}
+
+static in_port_t parse_in_port_t(const struct p101_env *env, struct p101_error *error, const char *port_str)
+{
+    char     *endptr;
+    uintmax_t parsed_value;
+
+    P101_TRACE(env);
+    errno        = 0;
+    parsed_value = strtoumax(port_str, &endptr, BASE_TEN);
+
+    // Check for errno was signalled
+    if(errno != 0)
+    {
+        P101_ERROR_RAISE_USER(error, "Error parsing in_port_t.", 1);
+        parsed_value = 0;
+        goto done;
+    }
+
+    // Check for any non-numeric characters in the input string
+    if(*endptr != '\0')
+    {
+        P101_ERROR_RAISE_USER(error, "Invalid characters in input.", 2);
+        parsed_value = 0;
+        goto done;
+    }
+
+    // Check if the parsed value is within valid range of in_port_t
+    if(parsed_value > UINT16_MAX)
+    {
+        P101_ERROR_RAISE_USER(error, "in_port_t value out of range.", 3);
+        parsed_value = 0;
+        goto done;
+    }
+
+done:
+    return (in_port_t)parsed_value;
 }
 
 _Noreturn static void usage(const struct p101_env *env, const char *program_name, int exit_code, const char *message)
