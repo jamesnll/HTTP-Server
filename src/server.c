@@ -32,10 +32,20 @@ static void socket_bind(int sockfd, struct sockaddr_storage *addr, in_port_t por
 static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
-static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
-static int  parse_request(char *request, struct http_request_arguments *request_args);
 
-// Response Sending Function
+// HTTP Request Functions
+static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
+static int parse_request(char *request, struct http_request_arguments *request_args);
+/*
+ * Idea for function below:
+ * Use file tree walking to walk through the directory arg for the server
+ * Use strstr to see if the endpoint is found in the directory
+ * If it is, we know it exists and can start building a 200 response
+ * if it doesn't, we can build a 404 response
+ */
+// static void find_request_endpoint();
+
+// HTTP Response Functions
 static void send_response(int client_sockfd, const char *header, const char *body);
 
 // Signal Handling Functions
