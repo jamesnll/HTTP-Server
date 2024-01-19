@@ -45,7 +45,7 @@ static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
 static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
-static int  parse_request(char *request, char **request_type, char **request_endpoint, char **http_version);
+static int  parse_request(char *request, struct http_request_arguments *request_args);
 
 // Response Sending Function
 static void send_response(int client_sockfd, const char *header, const char *body);
@@ -84,14 +84,11 @@ void run_server(const struct arguments *args)
     while(!exit_flag)
     {
         // Client socket variables
-        int                     client_sockfd;
-        struct sockaddr_storage client_addr;
-        socklen_t               client_addr_len;
-        char                    request_buffer[LINE_LENGTH] = "";
-        // These three variables below declared with read only memory, might have to change in the future
-        char *request_type;
-        char *request_endpoint;
-        char *request_http_version;
+        int                           client_sockfd;
+        struct sockaddr_storage       client_addr;
+        socklen_t                     client_addr_len;
+        char                          request_buffer[LINE_LENGTH] = "";
+        struct http_request_arguments request_args                = {0};
 
         // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
@@ -115,14 +112,14 @@ void run_server(const struct arguments *args)
             exit(EXIT_FAILURE);
         }
 
-        parse_request(request_buffer, &request_type, &request_endpoint, &request_http_version);
+        parse_request(request_buffer, &request_args);
 
         // TODO: 1. parse, search for request using file tree walking, create response, and send response to client WIP
 
         // TODO: 3. set up NDBM for post requests
 
         // Check request type and generate response
-        if(strcmp(request_type, "GET") == 0)
+        if(strcmp(request_args.type, "GET") == 0)
         {
             // Handle the GET request
             // Just a simple static response for now, might need to adjust to retrieve and send the requested resource.
@@ -130,17 +127,17 @@ void run_server(const struct arguments *args)
             const char *body     = "<html><head></head><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
             send_response(client_sockfd, header, body);                                               // Send the response back to the client
         }
-        else if(strcmp(request_type, "HEAD") == 0)
+        else if(strcmp(request_args.type, "HEAD") == 0)
         {
             // Handle HEAD request
             const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
-            send_response(client_sockfd, header, "");                             // Send the response back to the client
+            send_response(client_sockfd, header, "");                                     // Send the response back to the client
         }
-        else if(strcmp(request_type, "POST") == 0)
+        else if(strcmp(request_args.type, "POST") == 0)
         {
             // Handle POST request
             // Processing the data sent in the request and possibly store it using NDBM
-            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                                     // Set the response header for a successful request
+            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
             const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
             send_response(client_sockfd, header, body);                                 // Send the response back to the client
         }
@@ -408,14 +405,13 @@ static int socket_accept_connection(int server_fd, struct sockaddr_storage *clie
 static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer)
 {
     char        word[UINT8_MAX + 1];
-    const char *key               = "\r\n\r\n";
-    bool        key_found         = false;
-    const int   min_header_length = 16;
-    int         iteration         = 0;
+    const char *key       = "\r\n\r\n";
+    bool        key_found = false;
 
     while(!key_found)
     {
-        ssize_t bytes_read = read(client_sockfd, word, sizeof(uint8_t));
+        const char *header_end;
+        ssize_t     bytes_read = read(client_sockfd, word, sizeof(uint8_t));
 
         if(bytes_read < 1)
         {
@@ -426,16 +422,11 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
         word[UINT8_MAX] = '\0';
         strncat(buffer, word, strlen(word));    // Concatenate the word to the buffer
 
-        if(iteration >= min_header_length)    // Can only check for a header once 16 bytes are read
+        header_end = strstr(buffer, key);
+        if(header_end != NULL)
         {
-            const char *header_end;
-            header_end = strstr(buffer, key);
-            if(header_end != NULL)
-            {
-                key_found = true;    // Entire header has been read
-            }
+            key_found = true;    // Entire header has been read
         }
-        iteration++;
     }
     printf("%s", buffer);    // Test print
     return 0;
@@ -446,18 +437,18 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
  * @param buffer request to be parsed
  * @return
  */
-static int parse_request(char *request, char **request_type, char **request_endpoint, char **http_version)
+static int parse_request(char *request, struct http_request_arguments *request_args)
 {
     const char *delimiter = " ";
     char       *savePtr;
 
     // Lines below parses the first line of the request
-    *request_type     = strtok_r(request, delimiter, &savePtr);
-    *request_endpoint = strtok_r(NULL, delimiter, &savePtr);
-    *http_version     = strtok_r(NULL, "\r\n", &savePtr);
+    request_args->type         = strtok_r(request, delimiter, &savePtr);
+    request_args->endpoint     = strtok_r(NULL, delimiter, &savePtr);
+    request_args->http_version = strtok_r(NULL, "\r\n", &savePtr);
 
     // Test print
-    printf("Request type: %s\nRequest endpoint: %s\nHTTP Version: %s\n", *request_type, *request_endpoint, *http_version);
+    printf("Parse Request:\nRequest type: %s\nRequest endpoint: %s\nHTTP Version: %s\n", request_args->type, request_args->endpoint, request_args->http_version);
     return 0;
 }
 
