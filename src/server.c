@@ -13,6 +13,7 @@
 // Standard Library
 #include "../include/server.h"
 #include <fcntl.h>
+#include <ftw.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,14 +37,8 @@ static void socket_close(int sockfd);
 // HTTP Request Functions
 static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
 static int parse_request(char *request, struct http_request_arguments *request_args);
-/*
- * Idea for function below:
- * Use file tree walking to walk through the directory arg for the server
- * Use strstr to see if the endpoint is found in the directory
- * If it is, we know it exists and can start building a 200 response
- * if it doesn't, we can build a 404 response
- */
-// static void find_request_endpoint();
+static int find_request_endpoint(const char *server_directory, char *request_endpoint);
+static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 
 // HTTP Response Functions
 static void send_response(int client_sockfd, const char *header, const char *body);
@@ -54,6 +49,10 @@ static void sigint_handler(int signum);
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_flag = 0;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+char *target_file;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+int target_file_found = 0;
 
 void run_server(const struct arguments *args)
 {
@@ -109,6 +108,13 @@ void run_server(const struct arguments *args)
         }
 
         parse_request(request_buffer, &request_args);
+
+        if(find_request_endpoint(args->directory, request_args.endpoint) == -1)
+        {
+            socket_close(client_sockfd);
+            socket_close(sockfd);
+            exit(EXIT_FAILURE);
+        }
 
         // TODO: 1. parse, search for request using file tree walking, create response, and send response to client WIP
 
@@ -378,7 +384,6 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
             key_found = true;    // Entire header has been read
         }
     }
-    printf("%s", buffer);    // Test print
     return 0;
 }
 
@@ -399,6 +404,51 @@ static int parse_request(char *request, struct http_request_arguments *request_a
 
     // Test print
     printf("Parse Request:\nRequest type: %s\nRequest endpoint: %s\nHTTP Version: %s\n", request_args->type, request_args->endpoint, request_args->http_version);
+    return 0;
+}
+
+static int find_request_endpoint(const char *server_directory, char *request_endpoint)
+{
+    printf("Find request endpoint entered\nServer_dir: %s\nReq_endpoint: %s\n", server_directory, request_endpoint);
+
+    target_file       = request_endpoint;
+    target_file_found = 0;
+    if(nftw(server_directory, search_for_file, 1, FTW_PHYS) == -1)
+    {
+        perror("nftw");
+        return -1;
+    }
+
+    if(target_file_found == 1)
+    {
+        printf("File %s found in directory.\n", target_file);
+        // Build 200 response with the target_file
+    }
+    else
+    {
+        printf("File not found... creating 404 response\n");
+        // Build 404 response with the target_file
+    }
+    return 0;
+}
+
+static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
+{
+    if(tflag == FTW_F)
+    {
+        size_t fpath_length       = strlen(fpath);          // Get the length of full path
+        size_t target_file_length = strlen(target_file);    // Get the length of target_file
+
+        if(fpath_length >= target_file_length)
+        {
+            // fpath + (fpath_length - target_file_length) starts the fpath string at the index of (fpath_length - target_file_length)
+            if(strcmp(fpath + (fpath_length - target_file_length), target_file) == 0)
+            {
+                target_file_found = 1;
+                return 1;    // Stop the tree walk, file found
+            }
+        }
+    }
     return 0;
 }
 
