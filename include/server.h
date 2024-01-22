@@ -20,6 +20,11 @@ struct http_request_arguments
     char *http_version;
 };
 
+enum status_codes {
+    OK = 200,
+    NOT_FOUND = 404
+};
+
 void run_server(const struct arguments *args);
 
 #endif    // HTTP_SERVER_SERVER_H

@@ -41,6 +41,9 @@ static int find_request_endpoint(const char *server_directory, char *request_end
 static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 
 // HTTP Response Functions
+static int build_get_response(const char *request_endpoint);
+// static int build_head_response();
+// static int build_post_response();
 static void send_response(int client_sockfd, const char *header, const char *body);
 
 // Signal Handling Functions
@@ -125,9 +128,10 @@ void run_server(const struct arguments *args)
         {
             // Handle the GET request
             // Just a simple static response for now, might need to adjust to retrieve and send the requested resource.
-            const char  header[] = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";              // Set the response header for a successful request
-            const char *body     = "<html><head></head><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
-            send_response(client_sockfd, header, body);                                               // Send the response back to the client
+            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";              // Set the response header for a successful request
+            const char *body   = "<html><head></head><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
+            build_get_response(request_args.endpoint);
+            send_response(client_sockfd, header, body);    // Send the response back to the client
         }
         else if(strcmp(request_args.type, "HEAD") == 0)
         {
@@ -349,6 +353,19 @@ static int socket_accept_connection(int server_fd, struct sockaddr_storage *clie
     return client_fd;
 }
 
+/**
+ * Closes a socket with the specified file descriptor.
+ * @param sockfd the file descriptor of the socket to be closed
+ */
+static void socket_close(int sockfd)
+{
+    if(close(sockfd) == -1)
+    {
+        perror("error closing socket");
+        exit(EXIT_FAILURE);
+    }
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
@@ -386,6 +403,8 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
     }
     return 0;
 }
+
+#pragma GCC diagnostic pop
 
 /**
  * Parses the buffer to get request information.
@@ -432,6 +451,9 @@ static int find_request_endpoint(const char *server_directory, char *request_end
     return 0;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
 {
     if(tflag == FTW_F)
@@ -454,17 +476,23 @@ static int search_for_file(const char *fpath, const struct stat *sb, int tflag, 
 
 #pragma GCC diagnostic pop
 
-/**
- * Closes a socket with the specified file descriptor.
- * @param sockfd the file descriptor of the socket to be closed
- */
-static void socket_close(int sockfd)
+static int build_get_response(const char *request_endpoint)
 {
-    if(close(sockfd) == -1)
-    {
-        perror("error closing socket");
-        exit(EXIT_FAILURE);
-    }
+//        const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";
+    int status_code;
+
+
+    printf("build get response called: %s\n", request_endpoint);
+    return 0;
+}
+
+// Response Sending Function
+static void send_response(int client_sockfd, const char *header, const char *body)
+{
+    char response[LINE_LENGTH * 2];    // Allocate a buffer for the response
+
+    sprintf(response, "%s%s", header, body);             // Format the response by combining the header and body
+    write(client_sockfd, response, strlen(response));    // Sends the response to the client
 }
 
 // Signal Handling Functions
@@ -501,15 +529,6 @@ static void setup_signal_handler(void)
         perror("sigaction");
         exit(EXIT_FAILURE);
     }
-}
-
-// Response Sending Function
-static void send_response(int client_sockfd, const char *header, const char *body)
-{
-    char response[LINE_LENGTH * 2];    // Allocate a buffer for the response
-
-    sprintf(response, "%s%s", header, body);               // Format the response by combining the header and body
-    send(client_sockfd, response, strlen(response), 0);    // Sends the response to the client
 }
 
 #pragma GCC diagnostic push
