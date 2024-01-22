@@ -20,8 +20,9 @@ struct http_request_arguments
     char *http_version;
 };
 
-enum status_codes {
-    OK = 200,
+enum status_codes
+{
+    OK        = 200,
     NOT_FOUND = 404
 };
 

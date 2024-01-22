@@ -21,8 +21,8 @@
 #include <unistd.h>
 
 // Macros
-#define LINE_LENGTH 1024
-// #define HTTP_SERVER_VERSION "HTTP/1.0"
+#define LINE_LENGTH_LONG 1024
+#define LINE_LENGTH_SHORT 128
 
 // ----- Function Headers -----
 
@@ -41,10 +41,9 @@ static int find_request_endpoint(const char *server_directory, char *request_end
 static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 
 // HTTP Response Functions
-static int build_get_response(const char *request_endpoint);
-// static int build_head_response();
-// static int build_post_response();
-static void send_response(int client_sockfd, const char *header, const char *body);
+static void build_response_header(char *header);
+static void send_response(int client_sockfd, const char *header, const char *body);                                              // This function still sends responses for head + post
+static int  new_send_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file);    // New function to send the response
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -55,7 +54,7 @@ static volatile sig_atomic_t exit_flag = 0;
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 char *target_file;
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-int target_file_found = 0;
+int target_file_found = 0;    // 0 = not found, 1 = found
 
 void run_server(const struct arguments *args)
 {
@@ -85,8 +84,8 @@ void run_server(const struct arguments *args)
         int                           client_sockfd;
         struct sockaddr_storage       client_addr;
         socklen_t                     client_addr_len;
-        char                          request_buffer[LINE_LENGTH] = "";
-        struct http_request_arguments request_args                = {0};
+        char                          request_buffer[LINE_LENGTH_LONG] = "";
+        struct http_request_arguments request_args                     = {0};
 
         // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
@@ -119,22 +118,22 @@ void run_server(const struct arguments *args)
             exit(EXIT_FAILURE);
         }
 
-        // TODO: 1. create response, and send response to client WIP
-
         // TODO: 3. set up NDBM for post requests
 
         // Check request type and generate response
         if(strcmp(request_args.type, "GET") == 0)
         {
             // Handle the GET request
-            // Just a simple static response for now, might need to adjust to retrieve and send the requested resource.
-            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";              // Set the response header for a successful request
-            const char *body   = "<html><head></head><body><h1>GET Response</h1></body></html>";    // Set a HTML body as the response content
-            build_get_response(request_args.endpoint);
-            send_response(client_sockfd, header, body);    // Send the response back to the client
+            char header[LINE_LENGTH_SHORT] = "";    // Create an empty header to be built from the function below
+            build_response_header(header);
+            new_send_response(client_sockfd, header, args->directory, request_args.endpoint);    // Send the response back to the client
+            // 404 doesn't work just yet, it's late and im tired when i'm writing this lol
+            // when sending 404 it looks for request_args.endpoint, but that doesn't exist so it just returns
+            // TODO: 1.0 Update functions above to handle 404 responses correctly
         }
         else if(strcmp(request_args.type, "HEAD") == 0)
         {
+            // TODO: 1.1 dynamically create and send head response
             // Handle HEAD request
             const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
             send_response(client_sockfd, header, "");                                     // Send the response back to the client
@@ -159,8 +158,8 @@ void run_server(const struct arguments *args)
 
         // Before closing client socket, cleanup child process resources
         socket_close(client_sockfd);
+        printf("End of client\n");
     }
-
     socket_close(sockfd);    // Close server
 }
 
@@ -428,25 +427,13 @@ static int parse_request(char *request, struct http_request_arguments *request_a
 
 static int find_request_endpoint(const char *server_directory, char *request_endpoint)
 {
-    printf("Find request endpoint entered\nServer_dir: %s\nReq_endpoint: %s\n", server_directory, request_endpoint);
-
+    // Can't add any more parameters to nftw() so a global variable fixes this issue
     target_file       = request_endpoint;
     target_file_found = 0;
-    if(nftw(server_directory, search_for_file, 1, FTW_PHYS) == -1)
+    if(nftw(server_directory, search_for_file, 1, FTW_PHYS) == -1)    // Use file tree walking to search for the request_endpoint
     {
         perror("nftw");
         return -1;
-    }
-
-    if(target_file_found == 1)
-    {
-        printf("File %s found in directory.\n", target_file);
-        // Build 200 response with the target_file
-    }
-    else
-    {
-        printf("File not found... creating 404 response\n");
-        // Build 404 response with the target_file
     }
     return 0;
 }
@@ -464,6 +451,8 @@ static int search_for_file(const char *fpath, const struct stat *sb, int tflag, 
         if(fpath_length >= target_file_length)
         {
             // fpath + (fpath_length - target_file_length) starts the fpath string at the index of (fpath_length - target_file_length)
+            // eg fpath = /CLionProjects/HTTP-Server/search/test.html, target_file = /test.html
+            // fpath + (fpath_length - target_file_length) = /test.html
             if(strcmp(fpath + (fpath_length - target_file_length), target_file) == 0)
             {
                 target_file_found = 1;
@@ -471,28 +460,71 @@ static int search_for_file(const char *fpath, const struct stat *sb, int tflag, 
             }
         }
     }
-    return 0;
+    return 0;    // Continue the tree walk, if everything is exhausted, this function ends
 }
 
 #pragma GCC diagnostic pop
 
-static int build_get_response(const char *request_endpoint)
+// This is simple right now, might scale to include Content-type, Content-length, more status codes, etc
+static void build_response_header(char *header)
 {
-//        const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";
-    int status_code;
+    enum status_codes status_code;
+    const char       *status_phrase;
 
+    if(target_file_found == 1)    // Set for 200 code
+    {
+        status_code   = OK;
+        status_phrase = "OK";
+    }
+    else    // Set for 404 code
+    {
+        status_code   = NOT_FOUND;
+        status_phrase = "Not Found";
+    }
 
-    printf("build get response called: %s\n", request_endpoint);
-    return 0;
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\n\r\n", (int)status_code, status_phrase);
 }
 
 // Response Sending Function
 static void send_response(int client_sockfd, const char *header, const char *body)
 {
-    char response[LINE_LENGTH * 2];    // Allocate a buffer for the response
+    char response[LINE_LENGTH_LONG * 2];    // Allocate a buffer for the response
 
     sprintf(response, "%s%s", header, body);             // Format the response by combining the header and body
     write(client_sockfd, response, strlen(response));    // Sends the response to the client
+}
+
+// New function to send response, i didn't want to refactor the one above and potentially screw everything up
+static int new_send_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file)
+{
+    char  response[LINE_LENGTH_LONG * 2];
+    char  fpath[LINE_LENGTH_SHORT] = "";
+    char  body[LINE_LENGTH_LONG];
+    FILE *file;
+    long  file_size;
+
+    snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_file);    // Create absolute path to request file
+
+    file = fopen(fpath, "re");
+    if(file == NULL)
+    {
+        fprintf(stderr, "Error opening file.\n");
+        return -1;
+    }
+
+    fseek(file, 0, SEEK_END);    // Set file position indicator to EOF
+    file_size = ftell(file);     // Retrieve size of the file and store it in file_size
+    fseek(file, 0, SEEK_SET);    // Set file position indicator to beginning
+
+    fread(body, 1, (size_t)file_size, file);    // Read file into string
+
+    fclose(file);
+
+    sprintf(response, "%s%s", header, body);             // Format the response by combining the header and body
+    printf("Get response:\n%s\n\n", response);           // Test print
+    write(client_sockfd, response, strlen(response));    // Sends the response to the client
+
+    return 0;
 }
 
 // Signal Handling Functions
