@@ -116,7 +116,7 @@ void run_server(const struct arguments *args)
             exit(EXIT_FAILURE);
         }
 
-        // TODO: 1. parse, search for request using file tree walking, create response, and send response to client WIP
+        // TODO: 1. create response, and send response to client WIP
 
         // TODO: 3. set up NDBM for post requests
 
