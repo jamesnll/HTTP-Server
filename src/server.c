@@ -52,9 +52,9 @@ static void sigint_handler(int signum);
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_flag = 0;
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-char *target_file;
+static char *target_file;
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-int target_file_found = 0;    // 0 = not found, 1 = found
+static int target_file_found = 0;    // 0 = not found, 1 = found
 
 void run_server(const struct arguments *args)
 {
@@ -443,6 +443,11 @@ static int find_request_endpoint(const char *server_directory, char *request_end
 
 static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
 {
+    if(target_file == NULL)
+    {
+        return 0;
+    }
+
     if(tflag == FTW_F)
     {
         size_t fpath_length       = strlen(fpath);          // Get the length of full path
@@ -497,28 +502,35 @@ static void send_response(int client_sockfd, const char *header, const char *bod
 // New function to send response, i didn't want to refactor the one above and potentially screw everything up
 static int new_send_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file)
 {
-    char  response[LINE_LENGTH_LONG * 2];
-    char  fpath[LINE_LENGTH_SHORT] = "";
-    char  body[LINE_LENGTH_LONG];
-    FILE *file;
-    long  file_size;
+    char response[LINE_LENGTH_LONG * 2];
+    char fpath[LINE_LENGTH_SHORT] = "";
+    char body[LINE_LENGTH_LONG];
 
-    snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_file);    // Create absolute path to request file
-
-    file = fopen(fpath, "re");
-    if(file == NULL)
+    if(target_file_found == 1)    // Build response from found file
     {
-        fprintf(stderr, "Error opening file.\n");
-        return -1;
+        FILE *file;
+        long  file_size;
+        snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_file);    // Create absolute path to request file
+
+        file = fopen(fpath, "re");
+        if(file == NULL)
+        {
+            fprintf(stderr, "Error opening file.\n");
+            return -1;
+        }
+
+        fseek(file, 0, SEEK_END);    // Set file position indicator to EOF
+        file_size = ftell(file);     // Retrieve size of the file and store it in file_size
+        fseek(file, 0, SEEK_SET);    // Set file position indicator to beginning
+
+        fread(body, 1, (size_t)file_size, file);    // Read file into string
+
+        fclose(file);
     }
-
-    fseek(file, 0, SEEK_END);    // Set file position indicator to EOF
-    file_size = ftell(file);     // Retrieve size of the file and store it in file_size
-    fseek(file, 0, SEEK_SET);    // Set file position indicator to beginning
-
-    fread(body, 1, (size_t)file_size, file);    // Read file into string
-
-    fclose(file);
+    else    // Build 404 response
+    {
+        sprintf(body, "<html><body><p>Cannot GET %s</p></body></html>", request_file);
+    }
 
     sprintf(response, "%s%s", header, body);             // Format the response by combining the header and body
     printf("Get response:\n%s\n\n", response);           // Test print
