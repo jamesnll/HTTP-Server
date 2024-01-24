@@ -23,8 +23,6 @@
 // Macros
 #define LINE_LENGTH_LONG 1024
 #define LINE_LENGTH_SHORT 128
-#define HTTP_STATUS_OK 200
-#define HTTP_STATUS_NOT_FOUND 404
 
 // ----- Function Headers -----
 
@@ -137,8 +135,8 @@ void run_server(const struct arguments *args)
 
             // This is the updated 1.0 for GET request
             char header[LINE_LENGTH_SHORT] = "";
-            int  status_code               = (target_file_found == 1) ? HTTP_STATUS_OK : HTTP_STATUS_NOT_FOUND;    // Set the status code based on whether the file was found
-            build_response_header(header, status_code);                                                            // Now call build_response_header with the status code
+            int  status_code               = (target_file_found == 1) ? OK : NOT_FOUND;    // Set the status code based on whether the file was found
+            build_response_header(header, status_code);                                    // Now call build_response_header with the status code
             new_send_response(client_sockfd, header, args->directory, request_args.endpoint);
         }
         else if(strcmp(request_args.type, "HEAD") == 0)
@@ -504,16 +502,23 @@ static int search_for_file(const char *fpath, const struct stat *sb, int tflag, 
 // Trying a different build response header code
 static void build_response_header(char *header, int status_code)
 {
-    const char *status_phrase = (status_code == HTTP_STATUS_OK) ? "OK" : "Not Found";
+    const char *status_phrase;
 
-    //    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", status_code, status_phrase, (status_code == HTTP_STATUS_OK) ? strlen(target_file) : strlen("<html><body><h1>Not
-    //    Found</h1></body></html>"));
-    snprintf(header,
-             LINE_LENGTH_SHORT,
-             "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n",
-             status_code,
-             status_phrase,
-             (long)((status_code == HTTP_STATUS_OK) ? strlen(target_file) : strlen("<html><body><h1>Not Found</h1></body></html>")));    // TODO1.0 correction
+    switch(status_code)
+    {
+        case OK:
+            status_phrase = "OK";
+            break;
+        case NOT_FOUND:
+            status_phrase = "Not Found";
+            break;
+        default:
+            // Handle unexpected status_code
+            status_phrase = "Unknown";
+            break;
+    }
+
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", status_code, status_phrase, (long)((status_code == OK) ? strlen(target_file) : strlen("<html><body><h1>Not Found</h1></body></html>")));
 }
 
 // Response Sending Function
@@ -572,7 +577,7 @@ static void send_head_response(int client_sockfd, const char *server_directory, 
     char header[LINE_LENGTH_SHORT];
     char fpath[LINE_LENGTH_SHORT];
     long file_size   = 0;
-    int  status_code = (target_file_found == 1) ? HTTP_STATUS_OK : HTTP_STATUS_NOT_FOUND;    // Use target_file_found to determine status
+    int  status_code = (target_file_found == 1) ? OK : NOT_FOUND;    // Use target_file_found to determine status
 
     // Constructs the full file path
     snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
