@@ -23,6 +23,8 @@
 // Macros
 #define LINE_LENGTH_LONG 1024
 #define LINE_LENGTH_SHORT 128
+#define HTTP_STATUS_OK 200
+#define HTTP_STATUS_NOT_FOUND 404
 
 // ----- Function Headers -----
 
@@ -44,6 +46,7 @@ static int search_for_file(const char *fpath, const struct stat *sb, int tflag, 
 static void build_response_header(char *header);
 static void send_response(int client_sockfd, const char *header, const char *body);                                              // This function still sends responses for head + post
 static int  new_send_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file);    // New function to send the response
+static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint);                   // should be dynamically build the HTTP headers if 200, or 404
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -133,10 +136,11 @@ void run_server(const struct arguments *args)
         }
         else if(strcmp(request_args.type, "HEAD") == 0)
         {
-            // TODO: 1.1 dynamically create and send head response
+            // TODO: 1.1 dynamically create and send head response (COMPLETED)
             // Handle HEAD request
-            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
-            send_response(client_sockfd, header, "");                                     // Send the response back to the client
+            //            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
+            //            send_response(client_sockfd, header, "");                                     // Send the response back to the client
+            send_head_response(client_sockfd, args->directory, request_args.endpoint);
         }
         else if(strcmp(request_args.type, "POST") == 0)
         {
@@ -524,6 +528,7 @@ static int new_send_response(int client_sockfd, const char *header, const char *
         fseek(file, 0, SEEK_SET);    // Set file position indicator to beginning
 
         fread(body, 1, (size_t)file_size, file);    // Read file into string
+        body[file_size] = '\0';                     // Null-terminating the body after reading the file contents
 
         fclose(file);
     }
@@ -537,6 +542,36 @@ static int new_send_response(int client_sockfd, const char *header, const char *
     write(client_sockfd, response, strlen(response));    // Sends the response to the client
 
     return 0;
+}
+
+// Part of TO DO 1.1
+static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint)
+{
+    char header[LINE_LENGTH_SHORT];
+    char fpath[LINE_LENGTH_SHORT];
+    long file_size   = 0;
+    int  status_code = (target_file_found == 1) ? HTTP_STATUS_OK : HTTP_STATUS_NOT_FOUND;    // Use target_file_found to determine status
+
+    // Constructs the full file path
+    snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
+
+    if(target_file_found == 1)
+    {
+        // If the file was found, determine its size
+        FILE *file = fopen(fpath, "re");
+        if(file)
+        {
+            fseek(file, 0, SEEK_END);
+            file_size = ftell(file);
+            fclose(file);
+        }
+    }
+
+    // Builds the response header
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", status_code, (status_code == 200) ? "OK" : "Not Found", file_size);
+
+    // Sends the header
+    write(client_sockfd, header, strlen(header));
 }
 
 // Signal Handling Functions
