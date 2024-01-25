@@ -35,17 +35,15 @@ static int  socket_accept_connection(int server_fd, struct sockaddr_storage *cli
 static void socket_close(int sockfd);
 
 // HTTP Request Functions
-static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
-static int parse_request(char *request, struct http_request_arguments *request_args);
-static int find_request_endpoint(const char *server_directory, char *request_endpoint);
-static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf);
+static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
+static int  parse_request(char *request, struct http_request_arguments *request_args);
+static bool find_request_endpoint(const char *server_directory, const char *request_endpoint);
 
 // HTTP Response Functions
-// static void build_response_header(char *header);
-static void build_response_header(char *header, int status_code);                                                                // New testing for TODO1.0
-static void send_response(int client_sockfd, const char *header, const char *body);                                              // This function still sends responses for head + post
-static int  new_send_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file);    // New function to send the response
-static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint);                   // For TODO1.1 should be dynamically build the HTTP headers if 200, or 404
+static void build_response_header(char *header, const char *server_directory, const char *request_endpoint, bool request_file_found);
+// static void build_response_header(char *header, int status_code);
+static int  send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found);    // This function still sends responses for head + post
+static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found);                   // For TODO1.1 should be dynamically build the HTTP headers if 200, or 404
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -53,10 +51,6 @@ static void sigint_handler(int signum);
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_flag = 0;
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static char *target_file;
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static int target_file_found = 0;    // 0 = not found, 1 = found
 
 void run_server(const struct arguments *args)
 {
@@ -83,6 +77,7 @@ void run_server(const struct arguments *args)
     while(!exit_flag)
     {
         // Client socket variables
+        bool                          request_file_found;
         int                           client_sockfd;
         struct sockaddr_storage       client_addr;
         socklen_t                     client_addr_len;
@@ -112,13 +107,7 @@ void run_server(const struct arguments *args)
         }
 
         parse_request(request_buffer, &request_args);
-
-        if(find_request_endpoint(args->directory, request_args.endpoint) == -1)
-        {
-            socket_close(client_sockfd);
-            socket_close(sockfd);
-            exit(EXIT_FAILURE);
-        }
+        request_file_found = find_request_endpoint(args->directory, request_args.endpoint);
 
         // TODO: 3. set up NDBM for post requests
 
@@ -126,18 +115,9 @@ void run_server(const struct arguments *args)
         if(strcmp(request_args.type, "GET") == 0)
         {
             // Handle the GET request
-            //            char header[LINE_LENGTH_SHORT] = "";    // Create an empty header to be built from the function below
-            //            build_response_header(header);
-            //            new_send_response(client_sockfd, header, args->directory, request_args.endpoint);    // Send the response back to the client
-            // 404 doesn't work just yet, it's late and im tired when i'm writing this lol
-            // when sending 404 it looks for request_args.endpoint, but that doesn't exist so it just returns
-            // TODO: 1.0 Update functions above to handle 404 responses correctly
-
-            // This is the updated 1.0 for GET request
-            char header[LINE_LENGTH_SHORT] = "";
-            int  status_code               = (target_file_found == 1) ? OK : NOT_FOUND;    // Set the status code based on whether the file was found
-            build_response_header(header, status_code);                                    // Now call build_response_header with the status code
-            new_send_response(client_sockfd, header, args->directory, request_args.endpoint);
+            char header[LINE_LENGTH_SHORT] = "";                                                                     // Create an empty header to be built from the function below
+            build_response_header(header, args->directory, request_args.endpoint, request_file_found);               // Dynamically build the response header based on if request file was found
+            send_get_response(client_sockfd, header, args->directory, request_args.endpoint, request_file_found);    // Send the response back to the client
         }
         else if(strcmp(request_args.type, "HEAD") == 0)
         {
@@ -145,25 +125,25 @@ void run_server(const struct arguments *args)
             // Handle HEAD request
             //            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
             //            send_response(client_sockfd, header, "");                                     // Send the response back to the client
-            send_head_response(client_sockfd, args->directory, request_args.endpoint);
+            send_head_response(client_sockfd, args->directory, request_args.endpoint, request_file_found);
         }
         else if(strcmp(request_args.type, "POST") == 0)
         {
             // Handle POST request
             // Processing the data sent in the request and possibly store it using NDBM
-            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
-            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
-            send_response(client_sockfd, header, body);                                 // Send the response back to the client
+            printf("This is just here to avoid errors\n");
+            //            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
+            //            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
+            //            send_response(client_sockfd, header, body);                                 // Send the response back to the client
         }
         else
         {
             // Handle unknown request type
-            const char *header = "HTTP/1.0 400 Bad Request";                              // Set the response header for a bad request
-            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
-            send_response(client_sockfd, header, body);                                   // Send the response back to the client
+            printf("400 error, text is here to avoid errors\n");
+            //            const char *header = "HTTP/1.0 400 Bad Request";                              // Set the response header for a bad request
+            //            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
+            //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
         }
-
-        // TODO1 Section^^^
 
         // Before closing client socket, cleanup child process resources
         socket_close(client_sockfd);
@@ -434,110 +414,103 @@ static int parse_request(char *request, struct http_request_arguments *request_a
     return 0;
 }
 
-static int find_request_endpoint(const char *server_directory, char *request_endpoint)
-{
-    // Can't add any more parameters to nftw() so a global variable fixes this issue
-    target_file       = request_endpoint;
-    target_file_found = 0;
-    if(nftw(server_directory, search_for_file, 1, FTW_PHYS) == -1)    // Use file tree walking to search for the request_endpoint
-    {
-        perror("nftw");
-        return -1;
-    }
-    return 0;
-}
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
-static int search_for_file(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
+static bool find_request_endpoint(const char *server_directory, const char *request_endpoint)
 {
-    if(target_file == NULL)
+    char fpath[LINE_LENGTH_SHORT];
+
+    // Hard code / to find /index.html
+    if(strcmp(request_endpoint, "/") == 0)
     {
-        return 0;
+        printf("strcmp returned 0\n");
+        snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, "/index.html");
+    }
+    else
+    {
+        printf("strcmp didnt returned 0\n");
+        snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
     }
 
-    if(tflag == FTW_F)
-    {
-        size_t fpath_length       = strlen(fpath);          // Get the length of full path
-        size_t target_file_length = strlen(target_file);    // Get the length of target_file
+    printf("%s\n", fpath);
 
-        if(fpath_length >= target_file_length)
-        {
-            // fpath + (fpath_length - target_file_length) starts the fpath string at the index of (fpath_length - target_file_length)
-            // eg fpath = /CLionProjects/HTTP-Server/search/test.html, target_file = /test.html
-            // fpath + (fpath_length - target_file_length) = /test.html
-            if(strcmp(fpath + (fpath_length - target_file_length), target_file) == 0)
-            {
-                target_file_found = 1;
-                return 1;    // Stop the tree walk, file found
-            }
-        }
+    if(access(fpath, F_OK) != -1)
+    {
+        return true;    // File exists, build 200 response
     }
-    return 0;    // Continue the tree walk, if everything is exhausted, this function ends
+
+    return false;    // File doesn't exist, build 404 response
 }
 
 #pragma GCC diagnostic pop
 
 // This is simple right now, might scale to include Content-type, Content-length, more status codes, etc
-// static void build_response_header(char *header)
-//{
-//    enum status_codes status_code;
-//    const char       *status_phrase;
-//
-//    if(target_file_found == 1)    // Set for 200 code
-//    {
-//        status_code   = OK;
-//        status_phrase = "OK";
-//    }
-//    else    // Set for 404 code
-//    {
-//        status_code   = NOT_FOUND;
-//        status_phrase = "Not Found";
-//    }
-//
-//    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\n\r\n", (int)status_code, status_phrase);
-//}
-
-// Trying a different build response header code
-static void build_response_header(char *header, int status_code)
+static void build_response_header(char *header, const char *server_directory, const char *request_endpoint, bool request_file_found)
 {
-    const char *status_phrase;
+    enum status_codes status_code;
+    const char       *status_phrase;
+    long              content_length;
 
-    switch(status_code)
+    if(request_file_found)    // Set for 200 code
     {
-        case OK:
-            status_phrase = "OK";
-            break;
-        case NOT_FOUND:
-            status_phrase = "Not Found";
-            break;
-        default:
-            // Handle unexpected status_code
-            status_phrase = "Unknown";
-            break;
+        char  fpath[LINE_LENGTH_SHORT];
+        char  content_buffer[LINE_LENGTH_LONG];
+        FILE *file;
+        long  file_size;
+
+        status_code   = OK;
+        status_phrase = "OK";
+
+        if(strcmp(request_endpoint, "/") == 0)
+        {
+            printf("strcmp returned 0\n");
+            snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, "/index.html");
+        }
+        else
+        {
+            printf("strcmp didnt returned 0\n");
+            snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
+        }
+
+        file = fopen(fpath, "re");
+        if(file == NULL)
+        {
+            fprintf(stderr, "Error opening file.\n");
+            return;
+        }
+
+        fseek(file, 0, SEEK_END);    // Set file position indicator to EOF
+        file_size = ftell(file);     // Retrieve size of the file and store it in file_size
+        fseek(file, 0, SEEK_SET);    // Set file position indicator to beginning
+
+        fread(content_buffer, 1, (size_t)file_size, file);    // Read file into string
+        content_buffer[file_size] = '\0';                     // Null-terminating the body after reading the file contents
+
+        fclose(file);
+        content_length = (long)strlen(content_buffer);
+    }
+    else    // Set for 404 code
+    {
+        char error_body[LINE_LENGTH_SHORT];
+        status_code   = NOT_FOUND;
+        status_phrase = "Not Found";
+
+        snprintf(error_body, LINE_LENGTH_SHORT, "<html><body><p>Cannot GET %s</p></body></html>", request_endpoint);
+        content_length = (long)strlen(error_body);
     }
 
-    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", status_code, status_phrase, (long)((status_code == OK) ? strlen(target_file) : strlen("<html><body><h1>Not Found</h1></body></html>")));
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", (int)status_code, status_phrase, content_length);
 }
 
 // Response Sending Function
-static void send_response(int client_sockfd, const char *header, const char *body)
-{
-    char response[LINE_LENGTH_LONG * 2];    // Allocate a buffer for the response
-
-    sprintf(response, "%s%s", header, body);             // Format the response by combining the header and body
-    write(client_sockfd, response, strlen(response));    // Sends the response to the client
-}
-
-// New function to send response, i didn't want to refactor the one above and potentially screw everything up
-static int new_send_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file)
+static int send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found)
 {
     char response[LINE_LENGTH_LONG * 2];
     char fpath[LINE_LENGTH_SHORT] = "";
     char body[LINE_LENGTH_LONG];
 
-    if(target_file_found == 1)    // Build response from found file
+    if(request_file_found)    // Build response from found file
     {
         FILE *file;
         long  file_size;
@@ -572,17 +545,17 @@ static int new_send_response(int client_sockfd, const char *header, const char *
 }
 
 // Part of TODO1.1
-static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint)
+static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found)
 {
     char header[LINE_LENGTH_SHORT];
     char fpath[LINE_LENGTH_SHORT];
     long file_size   = 0;
-    int  status_code = (target_file_found == 1) ? OK : NOT_FOUND;    // Use target_file_found to determine status
+    int  status_code = (request_file_found) ? OK : NOT_FOUND;    // Use request_file_found to determine status
 
     // Constructs the full file path
     snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
 
-    if(target_file_found == 1)
+    if(request_file_found)
     {
         // If the file was found, determine its size
         FILE *file = fopen(fpath, "re");
@@ -595,7 +568,7 @@ static void send_head_response(int client_sockfd, const char *server_directory, 
     }
 
     // Builds the response header
-    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", status_code, (status_code == 200) ? "OK" : "Not Found", file_size);
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", status_code, (status_code == OK) ? "OK" : "Not Found", file_size);
 
     // Sends the header
     write(client_sockfd, header, strlen(header));
