@@ -424,16 +424,12 @@ static bool find_request_endpoint(const char *server_directory, const char *requ
     // Hard code / to find /index.html
     if(strcmp(request_endpoint, "/") == 0)
     {
-        printf("strcmp returned 0\n");
         snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, "/index.html");
     }
     else
     {
-        printf("strcmp didnt returned 0\n");
         snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
     }
-
-    printf("%s\n", fpath);
 
     if(access(fpath, F_OK) != -1)
     {
@@ -464,12 +460,10 @@ static void build_response_header(char *header, const char *server_directory, co
 
         if(strcmp(request_endpoint, "/") == 0)
         {
-            printf("strcmp returned 0\n");
             snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, "/index.html");
         }
         else
         {
-            printf("strcmp didnt returned 0\n");
             snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_endpoint);
         }
 
@@ -514,7 +508,15 @@ static int send_get_response(int client_sockfd, const char *header, const char *
     {
         FILE *file;
         long  file_size;
-        snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_file);    // Create absolute path to request file
+
+        if(strcmp(request_file, "/") == 0)
+        {
+            snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, "/index.html");
+        }
+        else
+        {
+            snprintf(fpath, LINE_LENGTH_SHORT, "%s%s", server_directory, request_file);
+        }
 
         file = fopen(fpath, "re");
         if(file == NULL)
