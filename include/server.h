@@ -27,6 +27,12 @@ struct client_info
     socklen_t               addr_len;
 };
 
+struct server_info
+{
+    int                     sockfd;
+    struct sockaddr_storage addr;
+};
+
 enum status_codes
 {
     OK        = 200,

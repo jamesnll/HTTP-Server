@@ -55,23 +55,22 @@ static volatile sig_atomic_t exit_flag = 0;
 
 void run_server(const struct arguments *args)
 {
-    int                     enable;
-    int                     sockfd;
-    struct sockaddr_storage addr;
+    int                enable;
+    struct server_info server = {0};
 
     // Set up server
-    convert_address(args->ip_address, &addr);
-    sockfd = socket_create(addr.ss_family, SOCK_STREAM, 0);
+    convert_address(args->ip_address, &server.addr);
+    server.sockfd = socket_create(server.addr.ss_family, SOCK_STREAM, 0);
 
     enable = 1;
-    if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) == -1)
+    if(setsockopt(server.sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) == -1)
     {
         perror("Setsockopt failed");
         exit(EXIT_FAILURE);
     }
 
-    socket_bind(sockfd, &addr, args->port);
-    start_listening(sockfd, SOMAXCONN);
+    socket_bind(server.sockfd, &server.addr, args->port);
+    start_listening(server.sockfd, SOMAXCONN);
     setup_signal_handler();
 
     // Handle incoming client connections
@@ -83,7 +82,7 @@ void run_server(const struct arguments *args)
         // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
         client.addr_len = sizeof(client.addr);
-        client.sockfd   = socket_accept_connection(sockfd, &client.addr, &client.addr_len);
+        client.sockfd   = socket_accept_connection(server.sockfd, &client.addr, &client.addr_len);
 
         if(client.sockfd == -1)
         {
@@ -105,7 +104,7 @@ void run_server(const struct arguments *args)
 
         socket_close(client.sockfd);
     }
-    socket_close(sockfd);    // Close server
+    socket_close(server.sockfd);    // Close server
 }
 
 // ----- Function Definitions -----
