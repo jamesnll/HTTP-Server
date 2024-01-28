@@ -33,10 +33,11 @@ static void socket_bind(int sockfd, struct sockaddr_storage *addr, in_port_t por
 static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
+static int  handle_client_connection(int client_sockfd, const char *server_directory);
 
 // HTTP Request Functions
-static int  read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer);
-static int  parse_request(char *request, struct http_request_arguments *request_args);
+static int  read_from_socket(int client_sockfd, char *buffer);
+static void parse_request(char *request, struct http_request_arguments *request_args);
 static bool find_request_endpoint(const char *server_directory, const char *request_endpoint);
 
 // HTTP Response Functions
@@ -77,10 +78,7 @@ void run_server(const struct arguments *args)
     while(!exit_flag)
     {
         // Client socket variables
-        bool request_file_found;
-        char                          request_buffer[LINE_LENGTH_LONG] = "";
-        struct client_info            client                           = {0};
-        struct http_request_arguments request_args                     = {0};
+        struct client_info client = {0};
 
         // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
@@ -97,51 +95,13 @@ void run_server(const struct arguments *args)
             continue;
         }
 
-        if(read_from_socket(client.sockfd, &client.addr, request_buffer) == -1)
+        if(handle_client_connection(client.sockfd, args->directory) == -1)
         {
             socket_close(client.sockfd);
-            socket_close(sockfd);
             continue;
         }
 
-        parse_request(request_buffer, &request_args);
-        request_file_found = find_request_endpoint(args->directory, request_args.endpoint);
-
-        // TODO: 3. set up NDBM for post requests
-
-        // Check request type and generate response
-        if(strcmp(request_args.type, "GET") == 0)
-        {
-            // Handle the GET request
-            char header[LINE_LENGTH_SHORT] = "";                                                                     // Create an empty header to be built from the function below
-            build_response_header(header, args->directory, request_args.endpoint, request_file_found);               // Dynamically build the response header based on if request file was found
-            send_get_response(client.sockfd, header, args->directory, request_args.endpoint, request_file_found);    // Send the response back to the client
-        }
-        else if(strcmp(request_args.type, "HEAD") == 0)
-        {
-            // TODO: 1.1 dynamically create and send head response (COMPLETED)
-            // Handle HEAD request
-            //            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
-            //            send_response(client_sockfd, header, "");                                     // Send the response back to the client
-            send_head_response(client.sockfd, args->directory, request_args.endpoint, request_file_found);
-        }
-        else if(strcmp(request_args.type, "POST") == 0)
-        {
-            // Handle POST request
-            // Processing the data sent in the request and possibly store it using NDBM
-            printf("This is just here to avoid errors\n");
-            //            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
-            //            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
-            //            send_response(client_sockfd, header, body);                                 // Send the response back to the client
-        }
-        else
-        {
-            // Handle unknown request type
-            printf("400 error, text is here to avoid errors\n");
-            //            const char *header = "HTTP/1.0 400 Bad Request";                              // Set the response header for a bad request
-            //            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
-            //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
-        }
+        // this code looks a little silly
 
         socket_close(client.sockfd);
     }
@@ -350,6 +310,53 @@ static void socket_close(int sockfd)
     }
 }
 
+static int handle_client_connection(int client_sockfd, const char *server_directory)
+{
+    bool                          request_file_found;
+    char                          request_buffer[LINE_LENGTH_LONG] = "";
+    struct http_request_arguments request_args                     = {0};
+
+    if(read_from_socket(client_sockfd, request_buffer) == -1)
+    {
+        return -1;
+    }
+
+    parse_request(request_buffer, &request_args);
+    request_file_found = find_request_endpoint(server_directory, request_args.endpoint);
+
+    // Check request type and generate response
+    if(strcmp(request_args.type, "GET") == 0)
+    {
+        // Handle the GET request
+        char header[LINE_LENGTH_SHORT] = "";                                                                      // Create an empty header to be built from the function below
+        build_response_header(header, server_directory, request_args.endpoint, request_file_found);               // Dynamically build the response header based on if request file was found
+        send_get_response(client_sockfd, header, server_directory, request_args.endpoint, request_file_found);    // Send the response back to the client
+    }
+    else if(strcmp(request_args.type, "HEAD") == 0)
+    {
+        // Handle HEAD request
+        send_head_response(client_sockfd, server_directory, request_args.endpoint, request_file_found);
+    }
+    else if(strcmp(request_args.type, "POST") == 0)
+    {
+        // Handle POST request
+        // Processing the data sent in the request and possibly store it using NDBM
+        printf("This is just here to avoid errors\n");
+        //            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
+        //            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
+        //            send_response(client_sockfd, header, body);                                 // Send the response back to the client
+    }
+    else
+    {
+        // Handle unknown request type
+        printf("400 error, text is here to avoid errors\n");
+        //            const char *header = "HTTP/1.0 400 Bad Request";                              // Set the response header for a bad request
+        //            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
+        //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
+    }
+    return 0;
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
@@ -359,7 +366,7 @@ static void socket_close(int sockfd)
  * @param client_addr     a pointer to a struct sockaddr_storage containing
  * client address information
  */
-static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_addr, char *buffer)
+static int read_from_socket(int client_sockfd, char *buffer)
 {
     char        word[UINT8_MAX + 1];
     const char *key       = "\r\n\r\n";
@@ -395,7 +402,7 @@ static int read_from_socket(int client_sockfd, struct sockaddr_storage *client_a
  * @param buffer request to be parsed
  * @return
  */
-static int parse_request(char *request, struct http_request_arguments *request_args)
+static void parse_request(char *request, struct http_request_arguments *request_args)
 {
     const char *delimiter = " ";
     char       *savePtr;
@@ -407,7 +414,6 @@ static int parse_request(char *request, struct http_request_arguments *request_a
 
     // Test print
     printf("Parse Request:\nRequest type: %s\nRequest endpoint: %s\nHTTP Version: %s\n", request_args->type, request_args->endpoint, request_args->http_version);
-    return 0;
 }
 
 #pragma GCC diagnostic push
