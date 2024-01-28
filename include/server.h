@@ -20,6 +20,13 @@ struct http_request_arguments
     char *http_version;
 };
 
+struct client_info
+{
+    int                     sockfd;
+    struct sockaddr_storage addr;
+    socklen_t               addr_len;
+};
+
 enum status_codes
 {
     OK        = 200,

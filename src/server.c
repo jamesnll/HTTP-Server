@@ -77,19 +77,17 @@ void run_server(const struct arguments *args)
     while(!exit_flag)
     {
         // Client socket variables
-        bool                          request_file_found;
-        int                           client_sockfd;
-        struct sockaddr_storage       client_addr;
-        socklen_t                     client_addr_len;
+        bool request_file_found;
         char                          request_buffer[LINE_LENGTH_LONG] = "";
+        struct client_info            client                           = {0};
         struct http_request_arguments request_args                     = {0};
 
         // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
 
-        client_addr_len = sizeof(client_addr);
-        client_sockfd   = socket_accept_connection(sockfd, &client_addr, &client_addr_len);
+        client.addr_len = sizeof(client.addr);
+        client.sockfd   = socket_accept_connection(sockfd, &client.addr, &client.addr_len);
 
-        if(client_sockfd == -1)
+        if(client.sockfd == -1)
         {
             if(exit_flag)
             {
@@ -99,11 +97,11 @@ void run_server(const struct arguments *args)
             continue;
         }
 
-        if(read_from_socket(client_sockfd, &client_addr, request_buffer) == -1)
+        if(read_from_socket(client.sockfd, &client.addr, request_buffer) == -1)
         {
-            socket_close(client_sockfd);
+            socket_close(client.sockfd);
             socket_close(sockfd);
-            exit(EXIT_FAILURE);
+            continue;
         }
 
         parse_request(request_buffer, &request_args);
@@ -117,7 +115,7 @@ void run_server(const struct arguments *args)
             // Handle the GET request
             char header[LINE_LENGTH_SHORT] = "";                                                                     // Create an empty header to be built from the function below
             build_response_header(header, args->directory, request_args.endpoint, request_file_found);               // Dynamically build the response header based on if request file was found
-            send_get_response(client_sockfd, header, args->directory, request_args.endpoint, request_file_found);    // Send the response back to the client
+            send_get_response(client.sockfd, header, args->directory, request_args.endpoint, request_file_found);    // Send the response back to the client
         }
         else if(strcmp(request_args.type, "HEAD") == 0)
         {
@@ -125,7 +123,7 @@ void run_server(const struct arguments *args)
             // Handle HEAD request
             //            const char *header = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";    // Set the response header (HEAD requests do not have a body)
             //            send_response(client_sockfd, header, "");                                     // Send the response back to the client
-            send_head_response(client_sockfd, args->directory, request_args.endpoint, request_file_found);
+            send_head_response(client.sockfd, args->directory, request_args.endpoint, request_file_found);
         }
         else if(strcmp(request_args.type, "POST") == 0)
         {
@@ -145,9 +143,7 @@ void run_server(const struct arguments *args)
             //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
         }
 
-        // Before closing client socket, cleanup child process resources
-        socket_close(client_sockfd);
-        printf("End of client\n");
+        socket_close(client.sockfd);
     }
     socket_close(sockfd);    // Close server
 }
