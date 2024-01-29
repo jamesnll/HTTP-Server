@@ -24,6 +24,10 @@
 #define LINE_LENGTH_LONG 1024
 #define LINE_LENGTH_SHORT 128
 
+// TODO: Figure out how to use NDBM to handle POST requests
+// TODO: Test with port forwarder
+// TODO: Start writing report documents
+
 // ----- Function Headers -----
 
 // Network Handling
