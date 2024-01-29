@@ -33,7 +33,7 @@ static void socket_bind(int sockfd, struct sockaddr_storage *addr, in_port_t por
 static void start_listening(int server_fd, int backlog);
 static int  socket_accept_connection(int server_fd, struct sockaddr_storage *client_addr, socklen_t *client_addr_len);
 static void socket_close(int sockfd);
-static int  handle_client_connection(int client_sockfd, const char *server_directory);
+static int  handle_client_connection(int client_sockfd, const char *server_directory, char *request_buffer);
 
 // HTTP Request Functions
 static int  read_from_socket(int client_sockfd, char *buffer);
@@ -55,8 +55,16 @@ static volatile sig_atomic_t exit_flag = 0;
 
 void run_server(const struct arguments *args)
 {
+    fd_set             readfds;
+    int               *client_sockets;
     int                enable;
+    int                new_socket;
+    int                sd;
+    size_t             max_clients;
     struct server_info server = {0};
+
+    client_sockets = NULL;
+    max_clients    = 0;
 
     // Set up server
     convert_address(args->ip_address, &server.addr);
@@ -76,35 +84,116 @@ void run_server(const struct arguments *args)
     // Handle incoming client connections
     while(!exit_flag)
     {
-        // Client socket variables
-        struct client_info client = {0};
+        // multiplexing variables
+        int max_fd;
+        int activity;
 
-        // TODO: 2. modify the code below so that multiplexing (select/poll) accepts clients
+        // Clear the socket set
+#ifndef __clang_analyzer__
+        FD_ZERO(&readfds);
+#endif
 
-        client.addr_len = sizeof(client.addr);
-        client.sockfd   = socket_accept_connection(server.sockfd, &client.addr, &client.addr_len);
+        // Add the server socket to the set
+        FD_SET((unsigned int)server.sockfd, &readfds);
+        max_fd = server.sockfd;
 
-        if(client.sockfd == -1)
+        // Add the client sockets to the set
+        for(size_t i = 0; i < max_clients; i++)
         {
-            if(exit_flag)
+            sd = client_sockets[i];
+
+            if(sd > 0)
             {
-                break;
+                FD_SET((unsigned int)sd, &readfds);    // Add sd to the set
+            }
+            if(sd > max_fd)
+            {
+                max_fd = sd;
+            }
+        }
+
+        activity = select(max_fd + 1, &readfds, NULL, NULL, NULL);
+
+        if(activity < 0)
+        {
+            perror("Select error");
+            exit(EXIT_FAILURE);
+        }
+
+        if(FD_ISSET(server.sockfd, &readfds))
+        {
+            int                    *temp;
+            struct sockaddr_storage addr;
+            socklen_t               addr_len;
+
+            addr_len   = sizeof(addr);
+            new_socket = socket_accept_connection(server.sockfd, &addr, &addr_len);
+
+            if(new_socket == -1)
+            {
+                if(exit_flag)
+                {
+                    break;
+                }
+                continue;
             }
 
-            continue;
+            printf("New client connected\n");
+
+            // Increase the size of the client_sockets array
+            max_clients++;
+            temp = (int *)realloc(client_sockets, sizeof(int) * max_clients);
+
+            if(temp == NULL)
+            {
+                perror("Realloc");
+                free(client_sockets);
+                exit(EXIT_FAILURE);
+            }
+            else
+            {
+                client_sockets                  = temp;
+                client_sockets[max_clients - 1] = new_socket;
+            }
         }
 
-        if(handle_client_connection(client.sockfd, args->directory) == -1)
+        // Handle incoming data from existing clients
+        for(size_t i = 0; i < max_clients; i++)
         {
-            socket_close(client.sockfd);
-            continue;
+            sd = client_sockets[i];
+
+            if(FD_ISSET((unsigned int)sd, &readfds))
+            {
+                char request_buffer[LINE_LENGTH_LONG] = "";
+                // read
+                if(read_from_socket(sd, request_buffer) == -1)
+                {
+                    // Connection closed or error
+                    printf("Client %d disconnected\n", sd);
+                    socket_close(sd);
+                    FD_CLR((unsigned int)sd, &readfds);    // Remove the closed socket from the set
+                    client_sockets[i] = 0;
+                    continue;
+                }
+
+                handle_client_connection(sd, args->directory, request_buffer);
+            }
         }
-
-        // this code looks a little silly
-
-        socket_close(client.sockfd);
     }
+
+    // Cleanup and close all client sockets
+    for(size_t i = 0; i < max_clients; i++)
+    {
+        sd = client_sockets[i];
+
+        if(sd > 0)
+        {
+            socket_close(sd);
+        }
+    }
+    free(client_sockets);
     socket_close(server.sockfd);    // Close server
+    printf("Server closed successfully\n");
 }
 
 // ----- Function Definitions -----
@@ -309,16 +398,10 @@ static void socket_close(int sockfd)
     }
 }
 
-static int handle_client_connection(int client_sockfd, const char *server_directory)
+static int handle_client_connection(int client_sockfd, const char *server_directory, char *request_buffer)
 {
     bool                          request_file_found;
-    char                          request_buffer[LINE_LENGTH_LONG] = "";
-    struct http_request_arguments request_args                     = {0};
-
-    if(read_from_socket(client_sockfd, request_buffer) == -1)
-    {
-        return -1;
-    }
+    struct http_request_arguments request_args = {0};
 
     parse_request(request_buffer, &request_args);
     request_file_found = find_request_endpoint(server_directory, request_args.endpoint);
