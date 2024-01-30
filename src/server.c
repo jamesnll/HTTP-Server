@@ -14,6 +14,7 @@
 #include "../include/server.h"
 #include <fcntl.h>
 #include <ftw.h>
+#include <ndbm.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@
 // Macros
 #define LINE_LENGTH_LONG 1024
 #define LINE_LENGTH_SHORT 128
+#define FILE_PERMISSION 0666
 
 // TODO: Figure out how to use NDBM to handle POST requests
 // TODO: Test with port forwarder
@@ -54,6 +56,14 @@ static void send_head_response(int client_sockfd, const char *server_directory, 
 static void setup_signal_handler(void);
 static void sigint_handler(int signum);
 
+// NDBM Database
+void init_db(void);
+void close_db(void);
+
+// Pointer to Global database
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static DBM *db;
+
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_flag = 0;
 
@@ -69,6 +79,7 @@ void run_server(const struct arguments *args)
 
     client_sockets = NULL;
     max_clients    = 0;
+    init_db();    // Initialize the database
 
     // Set up server
     convert_address(args->ip_address, &server.addr);
@@ -195,6 +206,7 @@ void run_server(const struct arguments *args)
             socket_close(sd);
         }
     }
+    close_db();    // closing db
     free(client_sockets);
     socket_close(server.sockfd);    // Close server
     printf("Server closed successfully\n");
@@ -404,11 +416,19 @@ static void socket_close(int sockfd)
 
 static int handle_client_connection(int client_sockfd, const char *server_directory, char *request_buffer)
 {
+    const char                   *post_data_const = "test post data";           // Trying to get post data
+    char                         *post_data       = strdup(post_data_const);    // NDBM
+    datum                         key;                                          // NDBM
+    datum                         value;                                        // NDBM
+    char                         *key_data = strdup("unique_post_key");         // NDBM
     bool                          request_file_found;
     struct http_request_arguments request_args = {0};
 
     parse_request(request_buffer, &request_args);
     request_file_found = find_request_endpoint(server_directory, request_args.endpoint);
+    //    const char *post_data_const = "test post data";           // Trying to get post data
+    //    char       *post_data       = strdup(post_data_const);    // NDBM
+    //    char       *key_data = strdup("unique_post_key");         // NDBM
 
     // Check request type and generate response
     if(strcmp(request_args.type, "GET") == 0)
@@ -431,6 +451,39 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         //            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
         //            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
         //            send_response(client_sockfd, header, body);                                 // Send the response back to the client
+
+        // new NDBM items
+        // Assuming post_data is extracted from request_buffer
+        //        const char *post_data_const = "test post data";    // Trying to get post data
+
+        // Dynamically allocate memory for a modifiable copy of post_data
+        //        char *post_data = strdup(post_data_const);
+        if(!post_data)
+        {
+            perror("Failed to allocate memory for post_data");
+            exit(EXIT_FAILURE);    // Handle error, e.g., cleanup and exit
+        }
+
+        // Dynamically allocate memory for the key to ensure it is modifiable if needed
+        if(!key_data)
+        {
+            free(post_data);    // Clean up post_data before exiting
+            perror("Failed to allocate memory for key_data");
+            exit(EXIT_FAILURE);
+        }
+
+        // Set up datum key and value with the modifiable copies
+        key.dptr  = key_data;
+        key.dsize = strlen(key_data) + 1;
+
+        value.dptr  = post_data;
+        value.dsize = strlen(post_data) + 1;
+
+        // Store data in the database
+        if(dbm_store(db, key, value, DBM_REPLACE) != 0)
+        {
+            fprintf(stderr, "Failed to store data in the NDBM database\n");
+        }
     }
     else
     {
@@ -440,6 +493,9 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         //            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
         //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
     }
+    // Frees the allocated key data
+    free(key_data);
+    free(post_data);
     return 0;
 }
 
@@ -697,6 +753,28 @@ static void setup_signal_handler(void)
     {
         perror("sigaction");
         exit(EXIT_FAILURE);
+    }
+}
+
+// Database Initialization
+void init_db(void)
+{
+    // Open the database; create if it doesn't exist
+    // FILE_PERMISSION sets the file permission to read and write for the user, group, and others
+    db = dbm_open("post_data_db", O_RDWR | O_CREAT, FILE_PERMISSION);
+    if(!db)
+    {
+        perror("Failed to open/create the NDBM database");
+        exit(EXIT_FAILURE);    // Exits the program if the database cannot be opened or created
+    }
+}
+
+void close_db(void)
+{
+    if(db)
+    {
+        dbm_close(db);    // Closes the NDBM database and release resources.
+        db = NULL;        // Safeguard
     }
 }
 
