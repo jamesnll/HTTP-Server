@@ -479,3 +479,11 @@ supported_cxx_compilers.txt
 .flags
 
 CMakeLists.txt
+
+.clang-format
+flags/
+build.sh
+change-compiler.sh
+generate-cmakelists.sh
+generate-flags.sh
+files.txt
