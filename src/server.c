@@ -49,8 +49,8 @@ static bool find_request_endpoint(const char *server_directory, const char *requ
 // HTTP Response Functions
 static void build_response_header(char *header, const char *server_directory, const char *request_endpoint, bool request_file_found);
 // static void build_response_header(char *header, int status_code);
-static int  send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found);    // This function still sends responses for head + post
-static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found);                   // For TODO1.1 should be dynamically build the HTTP headers if 200, or 404
+static int  send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found);
+static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -756,7 +756,9 @@ static void setup_signal_handler(void)
     }
 }
 
-// Database Initialization
+/**
+ * Database Initialization and file permission management for NDBM.
+ */
 void init_db(void)
 {
     // Open the database; create if it doesn't exist
@@ -769,6 +771,9 @@ void init_db(void)
     }
 }
 
+/**
+ * Database closing and resource management for NDBM.
+ */
 void close_db(void)
 {
     if(db)
