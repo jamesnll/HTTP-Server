@@ -474,10 +474,10 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
 
         // Set up datum key and value with the modifiable copies
         key.dptr  = key_data;
-        key.dsize = strlen(key_data) + 1;
+        key.dsize = (int)strlen(key_data) + 1;
 
         value.dptr  = post_data;
-        value.dsize = strlen(post_data) + 1;
+        value.dsize = (int)strlen(post_data) + 1;
 
         // Store data in the database
         if(dbm_store(db, key, value, DBM_REPLACE) != 0)
@@ -761,12 +761,16 @@ void init_db(void)
 {
     // Open the database; create if it doesn't exist
     // FILE_PERMISSION sets the file permission to read and write for the user, group, and others
-    db = dbm_open("post_data_db", O_RDWR | O_CREAT, FILE_PERMISSION);
+    const char file[LINE_LENGTH_SHORT] = "post_data_db";
+    char      *file_copy               = strdup(file);
+    db                                 = dbm_open(file_copy, O_RDWR | O_CREAT, FILE_PERMISSION);
     if(!db)
     {
         perror("Failed to open/create the NDBM database");
+        free(file_copy);
         exit(EXIT_FAILURE);    // Exits the program if the database cannot be opened or created
     }
+    free(file_copy);
 }
 
 void close_db(void)
