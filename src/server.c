@@ -32,8 +32,10 @@
  * all we gots to do is store info
  * steps
  * init db (done)
- *  read post request body (build 500 response if error)
- *  check if endpoint matches /store_data (else return 404)
+ *  ONLY BUILD ERROR RESPONSES IF THERE'S TIME EXCEPT FOR ONES WITH *
+ *  read post request body (build 500 response if error) (done)
+ *  maybe change the format to only json idk -> this is done from the request with curl, we just gotta handle it correctly
+ *  check if endpoint matches /store_data (else return 404) *
  *  check if syntax is correct (else return 400)
  *  store req body in db
  *  build 201 response if stored successfully, else build 500 response (internal server error)
