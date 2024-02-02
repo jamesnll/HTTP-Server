@@ -18,6 +18,7 @@ struct http_request_arguments
     char *type;
     char *endpoint;
     char *http_version;
+    int   content_length;
 };
 
 struct client_info

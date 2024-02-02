@@ -27,6 +27,19 @@
 #define FILE_PERMISSION 0666
 
 // TODO: Figure out how to use NDBM to handle POST requests
+/*
+ * store data with post infinite glitch !!!!!
+ * all we gots to do is store info
+ * steps
+ * init db (done)
+ *  read post request body (build 500 response if error)
+ *  check if endpoint matches /store_data (else return 404)
+ *  check if syntax is correct (else return 400)
+ *  store req body in db
+ *  build 201 response if stored successfully, else build 500 response (internal server error)
+ *  close db (done)
+ *  profit !!!!
+ */
 // TODO: Test with port forwarder
 // TODO: Start writing report documents
 
@@ -42,8 +55,9 @@ static void socket_close(int sockfd);
 static int  handle_client_connection(int client_sockfd, const char *server_directory, char *request_buffer);
 
 // HTTP Request Functions
+static int  get_request_content_length(char *request_buffer, int *content_length);
 static int  read_from_socket(int client_sockfd, char *buffer);
-static void parse_request(char *request, struct http_request_arguments *request_args);
+static void parse_request(const char *request, struct http_request_arguments *request_args);
 static bool find_request_endpoint(const char *server_directory, const char *request_endpoint);
 
 // HTTP Response Functions
@@ -51,6 +65,8 @@ static void build_response_header(char *header, const char *server_directory, co
 // static void build_response_header(char *header, int status_code);
 static int  send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found);
 static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found);
+// POST Response
+static int read_post_request_body(int client_sockfd, char *post_request_body, int content_length);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -445,12 +461,11 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
     }
     else if(strcmp(request_args.type, "POST") == 0)
     {
+        char post_request_body[LINE_LENGTH_SHORT] = "";
         // Handle POST request
         // Processing the data sent in the request and possibly store it using NDBM
-        printf("This is just here to avoid errors\n");
-        //            const char *header = "HTTP/1.0 200 OK\r\n\r\n";                             // Set the response header for a successful request
-        //            const char *body   = "<html><body><h1>POST Response</h1></body></html>";    // Set a HTML body as the response content
-        //            send_response(client_sockfd, header, body);                                 // Send the response back to the client
+        get_request_content_length(request_buffer, &request_args.content_length);
+        read_post_request_body(client_sockfd, post_request_body, request_args.content_length);
 
         // new NDBM items
         // Assuming post_data is extracted from request_buffer
@@ -484,6 +499,7 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         {
             fprintf(stderr, "Failed to store data in the NDBM database\n");
         }
+        printf("Stored in DB\n");
     }
     else
     {
@@ -496,11 +512,38 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
     // Frees the allocated key data
     free(key_data);
     free(post_data);
+    free(request_args.type);
+    free(request_args.endpoint);
+    free(request_args.http_version);
     return 0;
 }
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+
+static int get_request_content_length(char *request_buffer, int *content_length)
+{
+    const char *needle             = "Content-Length: ";
+    const char *content_length_ptr = strstr(request_buffer, needle);
+    char       *endptr;
+    const int   base_ten = 10;
+
+    printf("Request buffer: %s\n", request_buffer);
+
+    if(content_length_ptr != NULL)
+    {
+        content_length_ptr += strlen(needle);    // Move the pointer to the value of Content-Length
+
+        *content_length = (int)strtol(content_length_ptr, &endptr, base_ten);    // Get the Content-Length as an int
+    }
+    else
+    {
+        printf("Content-Length not found\n");
+        return -1;
+    }
+
+    return 0;
+}
 
 /**
  * Reads input from the network socket
@@ -534,6 +577,7 @@ static int read_from_socket(int client_sockfd, char *buffer)
             key_found = true;    // Entire header has been read
         }
     }
+    printf("Buffer: %s\n", buffer);
     return 0;
 }
 
@@ -544,18 +588,20 @@ static int read_from_socket(int client_sockfd, char *buffer)
  * @param buffer request to be parsed
  * @return
  */
-static void parse_request(char *request, struct http_request_arguments *request_args)
+static void parse_request(const char *request, struct http_request_arguments *request_args)
 {
     const char *delimiter = " ";
     char       *savePtr;
+    char       *request_copy = strdup(request);    // dup from original to not modify the original
 
-    // Lines below parses the first line of the request
-    request_args->type         = strtok_r(request, delimiter, &savePtr);
-    request_args->endpoint     = strtok_r(NULL, delimiter, &savePtr);
-    request_args->http_version = strtok_r(NULL, "\r\n", &savePtr);
+    // Lines below parses the first line of the request, dup from each to be able to free the copy and still use these args else where
+    request_args->type         = strdup(strtok_r(request_copy, delimiter, &savePtr));
+    request_args->endpoint     = strdup(strtok_r(NULL, delimiter, &savePtr));
+    request_args->http_version = strdup(strtok_r(NULL, "\r\n", &savePtr));
 
     // Test print
     printf("Parse Request:\nRequest type: %s\nRequest endpoint: %s\nHTTP Version: %s\n", request_args->type, request_args->endpoint, request_args->http_version);
+    free(request_copy);
 }
 
 #pragma GCC diagnostic push
@@ -718,6 +764,31 @@ static void send_head_response(int client_sockfd, const char *server_directory, 
 
     // Sends the header
     write(client_sockfd, header, strlen(header));
+}
+
+static int read_post_request_body(int client_sockfd, char *post_request_body, int content_length)
+{
+    char    word[UINT8_MAX + 1];
+    ssize_t total_bytes_read = 0;
+
+    printf("Content Length: %d\n", content_length);
+
+    while((int)total_bytes_read < content_length)
+    {
+        ssize_t bytes_read = read(client_sockfd, word, sizeof(uint8_t));
+        if(bytes_read < 1)
+        {
+            printf("error occurred\n");    // return -1 and go to next iteration for now, could build 500 response
+            return -1;
+        }
+
+        word[UINT8_MAX] = '\0';
+        strncat(post_request_body, word, strlen(word));
+        total_bytes_read += bytes_read;
+    }
+
+    printf("post request body: %s\n", post_request_body);
+    return 0;
 }
 
 // Signal Handling Functions
