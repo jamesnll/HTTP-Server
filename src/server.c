@@ -35,8 +35,8 @@
  *  ONLY BUILD ERROR RESPONSES IF THERE'S TIME EXCEPT FOR ONES WITH *
  *  read post request body (build 500 response if error) (done)
  *  check if endpoint matches /store_data (else return 404) *
- *  check if syntax is correct (else return 400) (if content-type = application/x-www-form-urlencoded), (if body follows key1=value1 format)
- *  store req body in db
+ *  check if syntax is correct (else return 400) (done)
+ *  store req body in db (done)
  *  build 201 response if stored successfully, else build 500 response (internal server error)
  *  close db (done)
  *  profit !!!!
@@ -65,10 +65,12 @@ static void build_response_header(char *header, const char *server_directory, co
 static int  send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found);
 static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found);
 // POST Response
-int        is_whitespace_or_newline(char c);
-static int get_request_content_length(char *request_buffer, int *content_length);
-static int read_post_request_body(int client_sockfd, char *post_request_body, int content_length);
-static int parse_post_request_body(const char *post_request_body, char *key, char *value);
+static int  is_whitespace_or_newline(char c);
+static int  get_request_content_length(char *request_buffer, int *content_length, int *status_code);
+static int  read_post_request_body(int client_sockfd, char *post_request_body, int content_length, int *status_code);
+static int  parse_post_request_body(const char *post_request_body, char *key, char *value, int *status_code);
+static int  store_request_in_db(char *post_key, char *post_value, int *status_code);
+static void build_post_response_header(char *header, bool request_file_found, int status_code);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -434,19 +436,11 @@ static void socket_close(int sockfd)
 
 static int handle_client_connection(int client_sockfd, const char *server_directory, char *request_buffer)
 {
-    const char                   *post_data_const = "test post data";           // Trying to get post data
-    char                         *post_data       = strdup(post_data_const);    // NDBM
-    datum                         key;                                          // NDBM
-    datum                         value;                                        // NDBM
-    char                         *key_data = strdup("unique_post_key");         // NDBM
     bool                          request_file_found;
     struct http_request_arguments request_args = {0};
 
     parse_request(request_buffer, &request_args);
     request_file_found = find_request_endpoint(server_directory, request_args.endpoint);
-    //    const char *post_data_const = "test post data";           // Trying to get post data
-    //    char       *post_data       = strdup(post_data_const);    // NDBM
-    //    char       *key_data = strdup("unique_post_key");         // NDBM
 
     // Check request type and generate response
     if(strcmp(request_args.type, "GET") == 0)
@@ -463,73 +457,32 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
     }
     else if(strcmp(request_args.type, "POST") == 0)
     {
+        char           header[LINE_LENGTH_SHORT]            = "";
         char           post_request_body[LINE_LENGTH_SHORT] = "";
-        struct kv_pair post_body_data                       = {0};
+        int            status_code;
+        struct kv_pair post_body_data = {0};
         // Handle POST request
         // Processing the data sent in the request and possibly store it using NDBM
-        if(get_request_content_length(request_buffer, &request_args.content_length) == -1)
+        if(get_request_content_length(request_buffer, &request_args.content_length, &status_code) == -1)
         {
-            free(key_data);
-            free(post_data);
-            free(request_args.type);
-            free(request_args.endpoint);
-            free(request_args.http_version);
-            return -1;    // this is fine for now, could build proper error response
+            goto create_post_response;    // Build error response
         }
 
-        if(read_post_request_body(client_sockfd, post_request_body, request_args.content_length) == -1)
+        if(read_post_request_body(client_sockfd, post_request_body, request_args.content_length, &status_code) == -1)
         {
-            free(key_data);
-            free(post_data);
-            free(request_args.type);
-            free(request_args.endpoint);
-            free(request_args.http_version);
-            return -1;    // this is fine for now, could build proper error response
+            goto create_post_response;    // Build error response
         }
 
-        if(parse_post_request_body(post_request_body, post_body_data.key, post_body_data.value) == -1)
+        if(parse_post_request_body(post_request_body, post_body_data.key, post_body_data.value, &status_code) == -1)
         {
-            free(key_data);
-            free(post_data);
-            free(request_args.type);
-            free(request_args.endpoint);
-            free(request_args.http_version);
-            return -1;    // this is fine for now, could build proper error response
+            goto create_post_response;    // Build error response
         }
 
-        // new NDBM items
-        // Assuming post_data is extracted from request_buffer
-        //        const char *post_data_const = "test post data";    // Trying to get post data
+        store_request_in_db(post_body_data.key, post_body_data.value, &status_code);
+        goto create_post_response;
 
-        // Dynamically allocate memory for a modifiable copy of post_data
-        //        char *post_data = strdup(post_data_const);
-        if(!post_data)
-        {
-            perror("Failed to allocate memory for post_data");
-            exit(EXIT_FAILURE);    // Handle error, e.g., cleanup and exit
-        }
-
-        // Dynamically allocate memory for the key to ensure it is modifiable if needed
-        if(!key_data)
-        {
-            free(post_data);    // Clean up post_data before exiting
-            perror("Failed to allocate memory for key_data");
-            exit(EXIT_FAILURE);
-        }
-
-        // Set up datum key and value with the modifiable copies
-        key.dptr  = post_body_data.key;
-        key.dsize = (int)strlen(post_body_data.key) + 1;
-
-        value.dptr  = post_body_data.value;
-        value.dsize = (int)strlen(post_body_data.value) + 1;
-
-        // Store data in the database
-        if(dbm_store(db, key, value, DBM_REPLACE) != 0)
-        {
-            fprintf(stderr, "Failed to store data in the NDBM database\n");
-        }
-        printf("Stored in DB... creating 201 response\n");
+    create_post_response:
+        build_post_response_header(header, request_file_found, status_code);
     }
     else
     {
@@ -539,9 +492,8 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         //            const char *body   = "<html><body><h1>400 Bad Request</h1></body></html>";    // Set an HTML body which indicates the request was bad
         //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
     }
+
     // Frees the allocated key data
-    free(key_data);
-    free(post_data);
     free(request_args.type);
     free(request_args.endpoint);
     free(request_args.http_version);
@@ -551,7 +503,7 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
-static int get_request_content_length(char *request_buffer, int *content_length)
+static int get_request_content_length(char *request_buffer, int *content_length, int *status_code)
 {
     const char *needle             = "Content-Length: ";
     const char *content_length_ptr = strstr(request_buffer, needle);    // Check if needle var exists in the request_buffer
@@ -566,10 +518,11 @@ static int get_request_content_length(char *request_buffer, int *content_length)
     }
     else
     {
-        printf("Content-Length not found\n");
+        printf("Content-Length not found... creating 400 response\n");
+        *status_code = BAD_REQUEST;
         return -1;
     }
-
+    *status_code = CREATED;
     return 0;
 }
 
@@ -793,7 +746,7 @@ static void send_head_response(int client_sockfd, const char *server_directory, 
     write(client_sockfd, header, strlen(header));
 }
 
-static int read_post_request_body(int client_sockfd, char *post_request_body, int content_length)
+static int read_post_request_body(int client_sockfd, char *post_request_body, int content_length, int *status_code)
 {
     char    word[UINT8_MAX + 1];
     ssize_t total_bytes_read = 0;
@@ -803,7 +756,8 @@ static int read_post_request_body(int client_sockfd, char *post_request_body, in
         ssize_t bytes_read = read(client_sockfd, word, sizeof(uint8_t));
         if(bytes_read < 0)
         {
-            printf("error occurred\n");    // return -1 and go to next request for now, could build 500 response
+            printf("Read error occurred... creating 500 response\n");    // return -1 and go to next request for now, could build 500 response
+            *status_code = INTERNAL_SERVER_ERROR;
             return -1;
         }
 
@@ -811,19 +765,21 @@ static int read_post_request_body(int client_sockfd, char *post_request_body, in
         strncat(post_request_body, word, strlen(word));
         total_bytes_read += bytes_read;
     }
+    *status_code = CREATED;
     return 0;
 }
 
-int is_whitespace_or_newline(char c)
+static int is_whitespace_or_newline(char c)
 {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 // format: key value
-static int parse_post_request_body(const char *post_request_body, char *key, char *value)
+static int parse_post_request_body(const char *post_request_body, char *key, char *value, int *status_code)
 {
-    char test_key[LINE_LENGTH_SHORT];
-    char test_value[LINE_LENGTH_SHORT];
+    const char *invalid_format = "Invalid format... creating 500 response\n";
+    char        test_key[LINE_LENGTH_SHORT];
+    char        test_value[LINE_LENGTH_SHORT];
     if(sscanf(post_request_body, "%50s %50s", test_key, test_value) == 2)    // Limit each string to 50 characters, and only accept 2 strings
     {
         size_t key_len   = strlen(test_key);
@@ -843,18 +799,55 @@ static int parse_post_request_body(const char *post_request_body, char *key, cha
         else
         {
             // If additional characters, it's not in the correct format
-            printf("Invalid format\n");
+            printf("%s", invalid_format);
+            *status_code = INTERNAL_SERVER_ERROR;
             return -1;
         }
     }
     else
     {
         // If sscanf doesn't parse two strings, it's not in the correct format
-        printf("Invalid format\n");
+        printf("%s", invalid_format);
+        *status_code = INTERNAL_SERVER_ERROR;
         return -1;
     }
+    *status_code = CREATED;
     return 0;
 }
+
+static int store_request_in_db(char *post_key, char *post_value, int *status_code)
+{
+    datum key;      // NDBM
+    datum value;    // NDBM
+
+    // Set up datum key and value with the modifiable copies
+    key.dptr  = post_key;
+    key.dsize = (int)strlen(post_key) + 1;
+
+    value.dptr  = post_value;
+    value.dsize = (int)strlen(post_value) + 1;
+
+    // Store data in the database
+    if(dbm_store(db, key, value, DBM_REPLACE) != 0)
+    {
+        printf("Failed to store data in the NDBM database... creating 500 response\n");
+        *status_code = INTERNAL_SERVER_ERROR;
+        return -1;
+    }
+
+    *status_code = CREATED;
+    printf("Stored in DB... creating 201 response\n");
+    return 0;
+}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
+static void build_post_response_header(char *header, bool request_file_found, int status_code)
+{
+}
+
+#pragma GCC diagnostic pop
 
 // Signal Handling Functions
 
