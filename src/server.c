@@ -461,8 +461,7 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         char           post_request_body[LINE_LENGTH_SHORT] = "";
         int            status_code;
         struct kv_pair post_body_data = {0};
-        // Handle POST request
-        // Processing the data sent in the request and possibly store it using NDBM
+
         if(get_request_content_length(request_buffer, &request_args.content_length, &status_code) == -1)
         {
             goto create_post_response;    // Build error response
@@ -777,7 +776,7 @@ static int is_whitespace_or_newline(char c)
 // format: key value
 static int parse_post_request_body(const char *post_request_body, char *key, char *value, int *status_code)
 {
-    const char *invalid_format = "Invalid format... creating 500 response\n";
+    const char *invalid_format = "Invalid format... creating 400 response\n";
     char        test_key[LINE_LENGTH_SHORT];
     char        test_value[LINE_LENGTH_SHORT];
     if(sscanf(post_request_body, "%50s %50s", test_key, test_value) == 2)    // Limit each string to 50 characters, and only accept 2 strings
@@ -800,7 +799,7 @@ static int parse_post_request_body(const char *post_request_body, char *key, cha
         {
             // If additional characters, it's not in the correct format
             printf("%s", invalid_format);
-            *status_code = INTERNAL_SERVER_ERROR;
+            *status_code = BAD_REQUEST;
             return -1;
         }
     }
@@ -808,7 +807,7 @@ static int parse_post_request_body(const char *post_request_body, char *key, cha
     {
         // If sscanf doesn't parse two strings, it's not in the correct format
         printf("%s", invalid_format);
-        *status_code = INTERNAL_SERVER_ERROR;
+        *status_code = BAD_REQUEST;
         return -1;
     }
     *status_code = CREATED;
@@ -836,7 +835,7 @@ static int store_request_in_db(char *post_key, char *post_value, int *status_cod
     }
 
     *status_code = CREATED;
-    printf("Stored in DB... creating 201 response\n");
+    printf("Stored in DB\n");
     return 0;
 }
 
@@ -845,6 +844,32 @@ static int store_request_in_db(char *post_key, char *post_value, int *status_cod
 
 static void build_post_response_header(char *header, bool request_file_found, int status_code)
 {
+    const char *status_phrase = "";
+    if(!request_file_found)
+    {
+        status_code   = NOT_FOUND;
+        status_phrase = "Not Found";
+    }
+    else
+    {
+        switch(status_code)
+        {
+            case CREATED:
+                status_phrase = "Created";
+                break;
+            case BAD_REQUEST:
+                status_phrase = "Bad Request";
+                break;
+            case INTERNAL_SERVER_ERROR:
+                status_phrase = "Internal Server Error";
+                break;
+            default:
+                break;
+        }
+    }
+
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\n\r\n", status_code, status_phrase);
+    printf("Post header: %s\n", header);
 }
 
 #pragma GCC diagnostic pop
