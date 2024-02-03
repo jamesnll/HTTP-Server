@@ -26,21 +26,7 @@
 #define LINE_LENGTH_LONG 1024
 #define FILE_PERMISSION 0666
 
-// TODO: Figure out how to use NDBM to handle POST requests
-/*
- * store data with post infinite glitch !!!!!
- * all we gots to do is store info
- * steps
- * init db (done)
- *  ONLY BUILD ERROR RESPONSES IF THERE'S TIME EXCEPT FOR ONES WITH *
- *  read post request body (build 500 response if error) (done)
- *  check if endpoint matches /store_data (else return 404) *
- *  check if syntax is correct (else return 400) (done)
- *  store req body in db (done)
- *  build 201 response if stored successfully, else build 500 response (internal server error)
- *  close db (done)
- *  profit !!!!
- */
+
 // TODO: Test with port forwarder
 // TODO: Start writing report documents
 
