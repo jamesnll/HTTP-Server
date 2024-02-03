@@ -213,6 +213,9 @@ void run_server(const struct arguments *args)
                 }
 
                 handle_client_connection(sd, args->directory, request_buffer);
+                socket_close(sd);
+                FD_CLR((unsigned int)sd, &readfds);    // Remove the closed socket from the set
+                client_sockets[i] = 0;
             }
         }
     }
@@ -494,6 +497,7 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         //            send_response(client_sockfd, header, body);                                   // Send the response back to the client
     }
 
+    printf("handle ending\n");
     // Frees the allocated key data
     free(request_args.type);
     free(request_args.endpoint);
@@ -897,7 +901,7 @@ static void send_post_response(int client_sockfd, const char *header, int status
             break;
     }
 
-    snprintf(response, LINE_LENGTH_LONG, "%s\r\n\r\n<html><body><p>%s</p></body></html>", header, response_body);
+    snprintf(response, LINE_LENGTH_LONG, "%s\r\n\r\n%s\r\n", header, response_body);
     write(client_sockfd, response, strlen(response));
 }
 
