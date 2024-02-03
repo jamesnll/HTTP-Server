@@ -12,6 +12,7 @@
 
 // Standard Library
 #include "../include/server.h"
+#include <ctype.h>
 #include <fcntl.h>
 #include <ftw.h>
 #include <ndbm.h>
@@ -23,7 +24,6 @@
 
 // Macros
 #define LINE_LENGTH_LONG 1024
-#define LINE_LENGTH_SHORT 128
 #define FILE_PERMISSION 0666
 
 // TODO: Figure out how to use NDBM to handle POST requests
@@ -34,9 +34,8 @@
  * init db (done)
  *  ONLY BUILD ERROR RESPONSES IF THERE'S TIME EXCEPT FOR ONES WITH *
  *  read post request body (build 500 response if error) (done)
- *  maybe change the format to only json idk -> this is done from the request with curl, we just gotta handle it correctly
  *  check if endpoint matches /store_data (else return 404) *
- *  check if syntax is correct (else return 400)
+ *  check if syntax is correct (else return 400) (if content-type = application/x-www-form-urlencoded), (if body follows key1=value1 format)
  *  store req body in db
  *  build 201 response if stored successfully, else build 500 response (internal server error)
  *  close db (done)
@@ -57,18 +56,19 @@ static void socket_close(int sockfd);
 static int  handle_client_connection(int client_sockfd, const char *server_directory, char *request_buffer);
 
 // HTTP Request Functions
-static int  get_request_content_length(char *request_buffer, int *content_length);
 static int  read_from_socket(int client_sockfd, char *buffer);
 static void parse_request(const char *request, struct http_request_arguments *request_args);
 static bool find_request_endpoint(const char *server_directory, const char *request_endpoint);
 
 // HTTP Response Functions
 static void build_response_header(char *header, const char *server_directory, const char *request_endpoint, bool request_file_found);
-// static void build_response_header(char *header, int status_code);
 static int  send_get_response(int client_sockfd, const char *header, const char *server_directory, const char *request_file, bool request_file_found);
 static void send_head_response(int client_sockfd, const char *server_directory, const char *request_endpoint, bool request_file_found);
 // POST Response
+int        is_whitespace_or_newline(char c);
+static int get_request_content_length(char *request_buffer, int *content_length);
 static int read_post_request_body(int client_sockfd, char *post_request_body, int content_length);
+static int parse_post_request_body(const char *post_request_body, char *key, char *value);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -463,11 +463,39 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
     }
     else if(strcmp(request_args.type, "POST") == 0)
     {
-        char post_request_body[LINE_LENGTH_SHORT] = "";
+        char           post_request_body[LINE_LENGTH_SHORT] = "";
+        struct kv_pair post_body_data                       = {0};
         // Handle POST request
         // Processing the data sent in the request and possibly store it using NDBM
-        get_request_content_length(request_buffer, &request_args.content_length);
-        read_post_request_body(client_sockfd, post_request_body, request_args.content_length);
+        if(get_request_content_length(request_buffer, &request_args.content_length) == -1)
+        {
+            free(key_data);
+            free(post_data);
+            free(request_args.type);
+            free(request_args.endpoint);
+            free(request_args.http_version);
+            return -1;    // this is fine for now, could build proper error response
+        }
+
+        if(read_post_request_body(client_sockfd, post_request_body, request_args.content_length) == -1)
+        {
+            free(key_data);
+            free(post_data);
+            free(request_args.type);
+            free(request_args.endpoint);
+            free(request_args.http_version);
+            return -1;    // this is fine for now, could build proper error response
+        }
+
+        if(parse_post_request_body(post_request_body, post_body_data.key, post_body_data.value) == -1)
+        {
+            free(key_data);
+            free(post_data);
+            free(request_args.type);
+            free(request_args.endpoint);
+            free(request_args.http_version);
+            return -1;    // this is fine for now, could build proper error response
+        }
 
         // new NDBM items
         // Assuming post_data is extracted from request_buffer
@@ -579,7 +607,6 @@ static int read_from_socket(int client_sockfd, char *buffer)
             key_found = true;    // Entire header has been read
         }
     }
-    printf("Buffer: %s\n", buffer);
     return 0;
 }
 
@@ -773,14 +800,12 @@ static int read_post_request_body(int client_sockfd, char *post_request_body, in
     char    word[UINT8_MAX + 1];
     ssize_t total_bytes_read = 0;
 
-    printf("Content Length: %d\n", content_length);
-
     while((int)total_bytes_read < content_length)
     {
         ssize_t bytes_read = read(client_sockfd, word, sizeof(uint8_t));
-        if(bytes_read < 1)
+        if(bytes_read < 0)
         {
-            printf("error occurred\n");    // return -1 and go to next iteration for now, could build 500 response
+            printf("error occurred\n");    // return -1 and go to next request for now, could build 500 response
             return -1;
         }
 
@@ -790,6 +815,48 @@ static int read_post_request_body(int client_sockfd, char *post_request_body, in
     }
 
     printf("post request body: %s\n", post_request_body);
+    return 0;
+}
+
+int is_whitespace_or_newline(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+// format: key value
+static int parse_post_request_body(const char *post_request_body, char *key, char *value)
+{
+    char test_key[LINE_LENGTH_SHORT];
+    char test_value[LINE_LENGTH_SHORT];
+    if(sscanf(post_request_body, "%50s %50s", test_key, test_value) == 2)    // Limit each string to 50 characters, and only accept 2 strings
+    {
+        size_t key_len   = strlen(test_key);
+        size_t value_len = strlen(test_value);
+        size_t index     = key_len + value_len + 1;
+        // Check for any whitespace after value
+        while(is_whitespace_or_newline(post_request_body[index]))
+        {
+            index++;
+        }
+
+        if(post_request_body[index] == '\0')
+        {
+            strncpy(key, test_key, key_len);
+            strncpy(value, test_value, key_len);
+        }
+        else
+        {
+            // If additional characters, it's not in the correct format
+            printf("Invalid format\n");
+            return -1;
+        }
+    }
+    else
+    {
+        // If sscanf doesn't parse two strings, it's not in the correct format
+        printf("Invalid format\n");
+        return -1;
+    }
     return 0;
 }
 

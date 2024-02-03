@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <stdint.h>
 
+#define LINE_LENGTH_SHORT 128
+
 struct arguments
 {
     char     *ip_address;
@@ -32,6 +34,12 @@ struct server_info
 {
     int                     sockfd;
     struct sockaddr_storage addr;
+};
+
+struct kv_pair
+{
+    char key[LINE_LENGTH_SHORT];
+    char value[LINE_LENGTH_SHORT];
 };
 
 enum status_codes
