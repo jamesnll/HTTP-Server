@@ -71,6 +71,7 @@ static int  read_post_request_body(int client_sockfd, char *post_request_body, i
 static int  parse_post_request_body(const char *post_request_body, char *key, char *value, int *status_code);
 static int  store_request_in_db(char *post_key, char *post_value, int *status_code);
 static void build_post_response_header(char *header, bool request_file_found, int status_code);
+static void send_post_response(int client_sockfd, const char *header, int status_code);
 
 // Signal Handling Functions
 static void setup_signal_handler(void);
@@ -482,6 +483,7 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
 
     create_post_response:
         build_post_response_header(header, request_file_found, status_code);
+        send_post_response(client_sockfd, header, status_code);
     }
     else
     {
@@ -868,8 +870,35 @@ static void build_post_response_header(char *header, bool request_file_found, in
         }
     }
 
-    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s\r\n\r\n", status_code, status_phrase);
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s", status_code, status_phrase);
     printf("Post header: %s\n", header);
+}
+
+static void send_post_response(int client_sockfd, const char *header, int status_code)
+{
+    char        response[LINE_LENGTH_LONG];
+    const char *response_body = "";
+
+    switch(status_code)
+    {
+        case CREATED:
+            response_body = "201 Created";
+            break;
+        case BAD_REQUEST:
+            response_body = "400 Bad Request";
+            break;
+        case NOT_FOUND:
+            response_body = "404 Not Found";
+            break;
+        case INTERNAL_SERVER_ERROR:
+            response_body = "500 Internal Server Error";
+            break;
+        default:
+            break;
+    }
+
+    snprintf(response, LINE_LENGTH_LONG, "%s\r\n\r\n<html><body><p>%s</p></body></html>", header, response_body);
+    write(client_sockfd, response, strlen(response));
 }
 
 #pragma GCC diagnostic pop
