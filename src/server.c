@@ -518,18 +518,18 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         }
 
         // Set up datum key and value with the modifiable copies
-        key.dptr  = key_data;
-        key.dsize = (int)strlen(key_data) + 1;
+        key.dptr  = post_body_data.key;
+        key.dsize = (int)strlen(post_body_data.key) + 1;
 
-        value.dptr  = post_data;
-        value.dsize = (int)strlen(post_data) + 1;
+        value.dptr  = post_body_data.value;
+        value.dsize = (int)strlen(post_body_data.value) + 1;
 
         // Store data in the database
         if(dbm_store(db, key, value, DBM_REPLACE) != 0)
         {
             fprintf(stderr, "Failed to store data in the NDBM database\n");
         }
-        printf("Stored in DB\n");
+        printf("Stored in DB... creating 201 response\n");
     }
     else
     {
@@ -554,11 +554,9 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
 static int get_request_content_length(char *request_buffer, int *content_length)
 {
     const char *needle             = "Content-Length: ";
-    const char *content_length_ptr = strstr(request_buffer, needle);
+    const char *content_length_ptr = strstr(request_buffer, needle);    // Check if needle var exists in the request_buffer
     char       *endptr;
     const int   base_ten = 10;
-
-    printf("Request buffer: %s\n", request_buffer);
 
     if(content_length_ptr != NULL)
     {
@@ -813,8 +811,6 @@ static int read_post_request_body(int client_sockfd, char *post_request_body, in
         strncat(post_request_body, word, strlen(word));
         total_bytes_read += bytes_read;
     }
-
-    printf("post request body: %s\n", post_request_body);
     return 0;
 }
 
