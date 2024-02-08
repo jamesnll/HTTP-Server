@@ -554,9 +554,9 @@ static int read_from_socket(int client_sockfd, char *buffer)
 #pragma GCC diagnostic pop
 
 /**
- * Parses the buffer to get request information.
- * @param buffer request to be parsed
- * @return a parsed request.
+ *  * Parses the buffer to get request information.
+ * @param request a string.
+ * @param request_args request structure argument.
  */
 static void parse_request(const char *request, struct http_request_arguments *request_args)
 {
