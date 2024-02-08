@@ -519,7 +519,7 @@ static int get_request_content_length(char *request_buffer, int *content_length,
 /**
  * Reads input from the network socket
  * @param client_sockfd   the file descriptor for the connected client socket
- * @param client_addr     a pointer to a struct sockaddr_storage containing
+ * @param buffer     a pointer to a struct sockaddr_storage containing
  * client address information
  */
 static int read_from_socket(int client_sockfd, char *buffer)
@@ -554,9 +554,9 @@ static int read_from_socket(int client_sockfd, char *buffer)
 #pragma GCC diagnostic pop
 
 /**
- * Parses the buffer to get request information.
- * @param buffer request to be parsed
- * @return
+ *  * Parses the buffer to get request information.
+ * @param request a string.
+ * @param request_args request structure argument.
  */
 static void parse_request(const char *request, struct http_request_arguments *request_args)
 {
