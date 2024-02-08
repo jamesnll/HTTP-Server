@@ -26,7 +26,6 @@
 #define LINE_LENGTH_LONG 1024
 #define FILE_PERMISSION 0666
 
-
 // TODO: Test with port forwarder
 // TODO: Start writing report documents
 
@@ -813,10 +812,10 @@ static int store_request_in_db(char *post_key, char *post_value, int *status_cod
 
     // Set up datum key and value with the modifiable copies
     key.dptr  = post_key;
-    key.dsize = (int)strlen(post_key) + 1;
+    key.dsize = strlen(post_key) + 1;
 
     value.dptr  = post_value;
-    value.dsize = (int)strlen(post_value) + 1;
+    value.dsize = strlen(post_value) + 1;
 
     // Store data in the database
     if(dbm_store(db, key, value, DBM_REPLACE) != 0)
