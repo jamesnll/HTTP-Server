@@ -26,7 +26,6 @@
 #define LINE_LENGTH_LONG 1024
 #define FILE_PERMISSION 0666
 
-
 // TODO: Test with port forwarder
 // TODO: Start writing report documents
 
