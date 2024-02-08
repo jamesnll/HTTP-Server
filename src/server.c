@@ -519,7 +519,7 @@ static int get_request_content_length(char *request_buffer, int *content_length,
 /**
  * Reads input from the network socket
  * @param client_sockfd   the file descriptor for the connected client socket
- * @param client_addr     a pointer to a struct sockaddr_storage containing
+ * @param buffer     a pointer to a struct sockaddr_storage containing
  * client address information
  */
 static int read_from_socket(int client_sockfd, char *buffer)
@@ -556,7 +556,7 @@ static int read_from_socket(int client_sockfd, char *buffer)
 /**
  * Parses the buffer to get request information.
  * @param buffer request to be parsed
- * @return
+ * @return a parsed request.
  */
 static void parse_request(const char *request, struct http_request_arguments *request_args)
 {
@@ -812,10 +812,10 @@ static int store_request_in_db(char *post_key, char *post_value, int *status_cod
 
     // Set up datum key and value with the modifiable copies
     key.dptr  = post_key;
-    key.dsize = strlen(post_key) + 1;
+    key.dsize = (int)strlen(post_key) + 1;
 
     value.dptr  = post_value;
-    value.dsize = strlen(post_value) + 1;
+    value.dsize = (int)strlen(post_value) + 1;
 
     // Store data in the database
     if(dbm_store(db, key, value, DBM_REPLACE) != 0)
