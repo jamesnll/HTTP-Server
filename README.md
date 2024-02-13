@@ -21,7 +21,7 @@ Initialization of the Program
 **In Terminal**
 
 - cd build
-- ./server <IPADDRESS> <PORT> /Users/YOUR_DIRECTORY/HTTP-Server/search/
+- ./server IPADDRESS PORT /Users/YOUR_DIRECTORY/HTTP-Server/search/
 
 **In Web Browser**
 
