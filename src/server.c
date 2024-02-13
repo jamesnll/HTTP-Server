@@ -55,7 +55,7 @@ static int  get_request_content_length(char *request_buffer, int *content_length
 static int  read_post_request_body(int client_sockfd, char *post_request_body, int content_length, int *status_code);
 static int  parse_post_request_body(const char *post_request_body, char *key, char *value, int *status_code);
 static int  store_request_in_db(char *post_key, char *post_value, int *status_code);
-static void build_post_response_header(char *header, bool request_file_found, int status_code);
+static void build_post_response_header(char *header, bool request_file_found, int *status_code);
 static void send_post_response(int client_sockfd, const char *header, int status_code);
 
 // Signal Handling Functions
@@ -451,6 +451,11 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         int            status_code;
         struct kv_pair post_body_data = {0};
 
+        if(!request_file_found)
+        {
+            goto create_post_response;
+        }
+
         if(get_request_content_length(request_buffer, &request_args.content_length, &status_code) == -1)
         {
             goto create_post_response;    // Build error response
@@ -470,7 +475,7 @@ static int handle_client_connection(int client_sockfd, const char *server_direct
         goto create_post_response;
 
     create_post_response:
-        build_post_response_header(header, request_file_found, status_code);
+        build_post_response_header(header, request_file_found, &status_code);
         send_post_response(client_sockfd, header, status_code);
     }
     else
@@ -548,6 +553,7 @@ static int read_from_socket(int client_sockfd, char *buffer)
             key_found = true;    // Entire header has been read
         }
     }
+    printf("Read request: %s", buffer);
     return 0;
 }
 
@@ -755,6 +761,7 @@ static int read_post_request_body(int client_sockfd, char *post_request_body, in
         strncat(post_request_body, word, strlen(word));
         total_bytes_read += bytes_read;
     }
+    printf("Read post request body: %s\n", post_request_body);
     *status_code = CREATED;
     return 0;
 }
@@ -784,7 +791,8 @@ static int parse_post_request_body(const char *post_request_body, char *key, cha
         if(post_request_body[index] == '\0')
         {
             strncpy(key, test_key, key_len);
-            strncpy(value, test_value, key_len);
+            strncpy(value, test_value, value_len);
+            printf("Parsed post body: %s %s\n", key, value);
         }
         else
         {
@@ -809,6 +817,7 @@ static int store_request_in_db(char *post_key, char *post_value, int *status_cod
 {
     datum key;      // NDBM
     datum value;    // NDBM
+    datum fetched_value;
 
     // Set up datum key and value with the modifiable copies
     key.dptr  = post_key;
@@ -825,25 +834,30 @@ static int store_request_in_db(char *post_key, char *post_value, int *status_cod
         return -1;
     }
 
+    fetched_value = dbm_fetch(db, key);
+    if(value.dptr)
+    {
+        printf("Key stored: %s Value Stored: %s\n", key.dptr, fetched_value.dptr);
+    }
+
     *status_code = CREATED;
-    printf("Stored in DB\n");
     return 0;
 }
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
-static void build_post_response_header(char *header, bool request_file_found, int status_code)
+static void build_post_response_header(char *header, bool request_file_found, int *status_code)
 {
     const char *status_phrase = "";
     if(!request_file_found)
     {
-        status_code   = NOT_FOUND;
+        *status_code  = NOT_FOUND;
         status_phrase = "Not Found";
     }
     else
     {
-        switch(status_code)
+        switch(*status_code)
         {
             case CREATED:
                 status_phrase = "Created";
@@ -859,7 +873,7 @@ static void build_post_response_header(char *header, bool request_file_found, in
         }
     }
 
-    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s", status_code, status_phrase);
+    snprintf(header, LINE_LENGTH_SHORT, "HTTP/1.0 %d %s", *status_code, status_phrase);
     printf("Post header: %s\n", header);
 }
 
